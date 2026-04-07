@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resume Writer</title>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+    h1 { font-size: 28px; margin-bottom: 8px; }
+    .subtitle { color: #888; margin-bottom: 32px; font-size: 14px; }
+
+    .section { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .section h2 { font-size: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .step { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: #333; color: #fff; border-radius: 50%; font-size: 12px; }
+
+    .upload-area { border: 2px dashed #ddd; border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+    .upload-area:hover { border-color: #999; }
+    .upload-area.has-resume { border-color: #4caf50; background: #f8fdf8; }
+    .upload-area input { display: none; }
+
+    textarea { width: 100%; height: 200px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; }
+    textarea:focus { outline: none; border-color: #666; }
+
+    .btn { background: #333; color: #fff; border: none; padding: 12px 32px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
+    .btn:hover { background: #555; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .btn-row { display: flex; gap: 12px; margin-top: 16px; }
+    .btn-dl { background: #4caf50; }
+    .btn-dl:hover { background: #43a047; }
+
+    .preview { margin-top: 16px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+    .preview iframe { width: 100%; height: 600px; border: none; }
+
+    .status { padding: 8px 16px; border-radius: 6px; font-size: 13px; margin-top: 12px; display: none; }
+    .status.show { display: block; }
+    .status.ok { background: #e8f5e9; color: #2e7d32; }
+    .status.err { background: #ffebee; color: #c62828; }
+    .status.loading { background: #e3f2fd; color: #1565c0; }
+
+    .resume-info { margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 6px; font-size: 13px; line-height: 1.6; }
+
+    .field-row { display: flex; gap: 12px; margin-bottom: 12px; align-items: center; }
+    .field-row label { font-size: 13px; color: #666; white-space: nowrap; }
+    .field-row input, .field-row select { border: 1px solid #ddd; border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; }
+    .field-row input:focus, .field-row select:focus { outline: none; border-color: #666; }
+    .type-input { width: 160px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Resume Writer</h1>
+    <p class="subtitle">PDF 업로드 → JD 붙여넣기 → 맞춤 이력서 PDF 생성</p>
+
+    <!-- Step 1: Upload -->
+    <div class="section">
+      <h2><span class="step">1</span> 이력서 업로드</h2>
+      <div class="field-row">
+        <label>이력서 타입:</label>
+        <input type="text" id="resumeType" class="type-input" value="default" placeholder="예: product, engineer">
+        {% if resume_types %}
+        <span style="font-size:12px; color:#999;">저장됨: {{ resume_types | join(', ') }}</span>
+        {% endif %}
+      </div>
+      <div class="upload-area {{ 'has-resume' if has_resume }}" id="dropzone" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept=".pdf">
+        <p id="uploadText">
+          {% if has_resume %}
+            이력서가 저장되어 있습니다. 새 파일을 업로드하면 덮어씁니다.
+          {% else %}
+            PDF 파일을 클릭하거나 드래그해서 업로드
+          {% endif %}
+        </p>
+      </div>
+      <div class="status" id="uploadStatus"></div>
+      <div class="resume-info" id="resumeInfo" style="display:none"></div>
+    </div>
+
+    <!-- Step 2: JD + Generate -->
+    <div class="section">
+      <h2><span class="step">2</span> JD 입력 & 생성</h2>
+      <div class="field-row">
+        <label>사용할 이력서:</label>
+        <select id="genResumeType">
+          {% if resume_types %}
+            {% for t in resume_types %}
+            <option value="{{ t }}">{{ t }}</option>
+            {% endfor %}
+          {% else %}
+            <option value="default">default</option>
+          {% endif %}
+        </select>
+      </div>
+      <textarea id="jdInput" placeholder="채용공고(JD)를 여기에 붙여넣으세요..."></textarea>
+      <div class="btn-row">
+        <button class="btn" id="generateBtn" onclick="generate()">이력서 생성</button>
+        <a class="btn btn-dl" id="downloadBtn" style="display:none; text-decoration:none;">PDF 다운로드</a>
+      </div>
+      <div class="status" id="genStatus"></div>
+    </div>
+
+    <!-- Preview -->
+    <div class="section" id="previewSection" style="display:none">
+      <h2>미리보기</h2>
+      <div class="preview">
+        <iframe id="previewFrame"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const dropzone = document.getElementById('dropzone');
+
+    async function parseJsonResponse(res) {
+      const text = await res.text();
+      if (!res.ok) {
+        const message = text.trim() || `서버 오류 (${res.status})`;
+        throw new Error(message);
+      }
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error('서버 응답이 JSON 형식이 아닙니다.');
+      }
+    }
+
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = '#999'; });
+    dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = ''; });
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.style.borderColor = '';
+      if (e.dataTransfer.files[0]) { fileInput.files = e.dataTransfer.files; uploadFile(); }
+    });
+    fileInput.addEventListener('change', uploadFile);
+
+    function showStatus(id, msg, type) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.className = 'status show ' + type;
+    }
+
+    async function uploadFile() {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      showStatus('uploadStatus', '업로드 및 파싱 중...', 'loading');
+      const resumeType = document.getElementById('resumeType').value.trim() || 'default';
+      const form = new FormData();
+      form.append('pdf', file);
+      form.append('resume_type', resumeType);
+
+      try {
+        const res = await fetch('/upload', { method: 'POST', body: form });
+        const data = await parseJsonResponse(res);
+        if (data.error) { showStatus('uploadStatus', data.error, 'err'); return; }
+
+        showStatus('uploadStatus', `이력서 저장 완료 (타입: ${data.resume_type})`, 'ok');
+        // resume_type 셀렉트에 추가
+        const sel = document.getElementById('genResumeType');
+        if (![...sel.options].some(o => o.value === data.resume_type)) {
+          sel.add(new Option(data.resume_type, data.resume_type));
+        }
+        sel.value = data.resume_type;
+        dropzone.classList.add('has-resume');
+        document.getElementById('uploadText').textContent = file.name + ' — 업로드 완료';
+
+        const info = document.getElementById('resumeInfo');
+        const s = data.structured;
+        // textContent로 안전하게 렌더링
+        info.textContent = `${s.name || ''} — ${s.title || ''} | 경력 ${(s.experience||[]).length}건 | 스킬: ${(s.skills||[]).join(', ')}`;
+        info.style.display = 'block';
+      } catch (e) {
+        showStatus('uploadStatus', '오류: ' + e.message, 'err');
+      }
+    }
+
+    async function generate() {
+      const jd = document.getElementById('jdInput').value.trim();
+      if (!jd) { showStatus('genStatus', 'JD를 입력해주세요', 'err'); return; }
+
+      const btn = document.getElementById('generateBtn');
+      btn.disabled = true;
+      btn.textContent = '생성 중...';
+      showStatus('genStatus', 'Claude가 이력서를 재작성 중...', 'loading');
+
+      try {
+        const res = await fetch('/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jd_text: jd,
+            resume_type: document.getElementById('genResumeType').value
+          })
+        });
+        const data = await parseJsonResponse(res);
+        if (data.error) { showStatus('genStatus', data.error, 'err'); return; }
+
+        showStatus('genStatus', `생성 완료 — ${data.pdf_path}`, 'ok');
+
+        const dlBtn = document.getElementById('downloadBtn');
+        dlBtn.href = '/download/' + data.filename;
+        dlBtn.textContent = data.pdf_path + ' 다운로드';
+        dlBtn.style.display = 'inline-block';
+
+        document.getElementById('previewSection').style.display = 'block';
+        // DOMPurify로 HTML 정제 후 iframe에 표시
+        const cleanHtml = DOMPurify.sanitize(data.html, { ALLOWED_TAGS: ['html', 'body', 'head', 'meta', 'style', 'h1', 'h2', 'div', 'ul', 'li', 'strong', 'span'] });
+        document.getElementById('previewFrame').srcdoc = cleanHtml;
+      } catch (e) {
+        showStatus('genStatus', '오류: ' + e.message, 'err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '이력서 생성';
+      }
+    }
+  </script>
+</body>
+</html>
