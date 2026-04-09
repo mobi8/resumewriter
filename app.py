@@ -1,11 +1,13 @@
 import json
 import logging
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 
-import anthropic
+import httpx
 import pdfplumber
+from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
 from fpdf import FPDF
 from flask import Flask, request, render_template, send_file, jsonify
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -25,14 +27,21 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 BASE = Path(__file__).parent
-RESUMES_DIR = BASE / "resumes"
+SAMPLES_DIR = BASE / "resumes"  # 샘플 이력서 저장
 OUTPUTS_DIR = BASE / "outputs"
 LOGS_DIR = BASE / "logs"
-RESUMES_DIR.mkdir(exist_ok=True)
+SAMPLES_DIR.mkdir(exist_ok=True)
 OUTPUTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
-client = anthropic.Anthropic()
+# OpenRouter 설정 (더 저렴한 모델로 변경 가능)
+# 사용 가능한 모델:
+# - "deepseek/deepseek-chat" (기본, ~$0.14/1M tokens)
+# - "openai/gpt-4-turbo" (고급)
+# - "anthropic/claude-3-haiku" (가장 저렴)
+OPENROUTER_MODEL = "openai/gpt-4o-mini"  # 더 저렴하고 빠름
+HTTP_TIMEOUT = 30.0
+http_client = httpx.Client(timeout=HTTP_TIMEOUT)
 
 # ── fixed JSON schema ────────────────────────────────────────────────
 
@@ -46,53 +55,57 @@ RESUME_SCHEMA = {
 
 # ── fixed prompt templates ───────────────────────────────────────────
 
-PARSE_PROMPT = """You are a resume parsing assistant.
+REWRITE_PROMPT = """You are an expert executive resume writer and recruiter.
 
-Extract the resume into this exact JSON schema. JSON only, no other text.
+Your task: Rewrite the provided resume to MAXIMIZE match with the target job description.
 
-Schema:
-{
-  "name": "",
-  "title": "",
-  "summary": "",
+## CRITICAL INSTRUCTIONS:
+
+1. **JD Analysis First**: Extract the top 5 must-have skills/experiences from JD
+2. **Experience Reframing**:
+   - Find existing experience that DIRECTLY maps to JD requirements
+   - Rewrite bullets to highlight relevance to JD's core domains
+   - Use JD's terminology and language (e.g., if JD emphasizes "regulatory compliance", match that language)
+3. **Quantify Impact**:
+   - Emphasize numbers, metrics, and measurable outcomes
+   - Connect past achievements to JD's success metrics
+4. **Title Strategy**:
+   - Update title to be as close as possible to target role
+   - Show clear career progression toward target role
+5. **Skills Matching**:
+   - Prioritize skills that appear in both resume AND JD
+   - Add relevant domain expertise if directly evident in experience
+6. **Story Consistency**: Make career narrative show readiness for this specific role
+
+## CONSTRAINTS:
+- DO NOT invent or exaggerate experience
+- Keep all claims grounded in provided resume data
+- Each bullet max 20 words
+- Focus on delivering high match potential for ATS + hiring manager
+
+## OUTPUT FORMAT (JSON ONLY - no markdown, no explanation):
+
+{{
+  "name": "string",
+  "title": "string (target-role-aligned)",
+  "summary": "string (3-4 sentences, JD-focused, with key metrics)",
   "experience": [
-    {"company": "", "role": "", "period": "", "bullets": []}
+    {{"company": "string", "role": "string", "period": "string", "bullets": ["bullet1 (JD-matched)", "bullet2", ...]}}
   ],
-  "skills": ["skill1", "skill2"]
-}
+  "skills": ["skill1 (from JD)", "skill2 (from JD)", "skill3"]
+}}
 
-Resume text:
-"""
+## CONTEXT:
 
-REWRITE_PROMPT = """You are a resume optimization assistant.
+TARGET JOB:
+{jd}
 
-Rewrite the resume based on the job description.
-
-Constraints:
-- Do not invent experience
-- Keep metrics and numbers
-- Keep professional tone
-- Max bullet length 25 words
-- Keep structure clean
-
-Output: a single JSON object matching this schema exactly. JSON only, no markdown.
-
-{
-  "name": "",
-  "title": "",
-  "summary": "",
-  "experience": [
-    {"company": "", "role": "", "period": "", "bullets": []}
-  ],
-  "skills": ["skill1", "skill2"]
-}
-
-Resume:
+RESUME DATA:
 {resume}
 
-Job Description:
-{jd}
-"""
+---
+
+Now rewrite the resume to maximize fit for the target role. JSON only."""
 
 # ── HTML template for PDF ────────────────────────────────────────────
 
@@ -101,20 +114,20 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <style>
-  @page { size: A4; margin: 20mm 18mm; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #222; font-size: 11pt; line-height: 1.5; }
-  h1 { font-size: 22pt; margin: 0 0 2px; }
-  .title { font-size: 12pt; color: #555; margin-bottom: 12px; }
-  .summary { margin-bottom: 16px; color: #333; }
-  h2 { font-size: 13pt; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 1px; color: #444; }
-  .exp-header { display: flex; justify-content: space-between; margin-bottom: 2px; }
-  .exp-header strong { font-size: 11pt; }
-  .exp-header span { color: #666; font-size: 10pt; }
-  .exp-role { color: #555; font-style: italic; margin-bottom: 4px; }
-  ul { padding-left: 18px; margin: 4px 0 12px; }
-  li { margin-bottom: 2px; }
-  .skills { display: flex; flex-wrap: wrap; gap: 6px; }
-  .skill-tag { background: #f0f0f0; padding: 3px 10px; border-radius: 4px; font-size: 10pt; }
+  @page {{ size: A4; margin: 20mm 18mm; }}
+  body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #222; font-size: 11pt; line-height: 1.5; }}
+  h1 {{ font-size: 22pt; margin: 0 0 2px; }}
+  .title {{ font-size: 12pt; color: #555; margin-bottom: 12px; }}
+  .summary {{ margin-bottom: 16px; color: #333; }}
+  h2 {{ font-size: 13pt; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 1px; color: #444; }}
+  .exp-header {{ display: flex; justify-content: space-between; margin-bottom: 2px; }}
+  .exp-header strong {{ font-size: 11pt; }}
+  .exp-header span {{ color: #666; font-size: 10pt; }}
+  .exp-role {{ color: #555; font-style: italic; margin-bottom: 4px; }}
+  ul {{ padding-left: 18px; margin: 4px 0 12px; }}
+  li {{ margin-bottom: 2px; }}
+  .skills {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+  .skill-tag {{ background: #f0f0f0; padding: 3px 10px; border-radius: 4px; font-size: 10pt; }}
 </style>
 </head>
 <body>
@@ -129,6 +142,47 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="skills">{skills_html}</div>
 </body>
 </html>"""
+#
+# ── OpenRouter helper ───────────────────────────────────────────────────────
+
+def call_deepseek(prompt: str) -> dict:
+    """OpenRouter API 호출 (429 재시도 로직 포함)"""
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("OpenRouter API key is not configured")
+
+    url = f"{OPENROUTER_BASE_URL.rstrip('/')}/chat/completions"
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2,
+    }
+    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = http_client.post(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
+            if response.status_code == 429:
+                wait_time = min(2 ** attempt, 30)  # 지수 백오프: 1초, 2초, 4초...
+                if attempt < max_retries - 1:
+                    log.warning(f"Rate limited (429). Retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 429 and attempt < max_retries - 1:
+                wait_time = min(2 ** attempt, 30)
+                log.warning(f"Rate limited (429). Retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+                continue
+            log.error("OpenRouter API error: %s", exc)
+            raise
+        except httpx.RequestError as exc:
+            log.error("OpenRouter request failed: %s", exc)
+            raise
+
+    raise RuntimeError("Max retries exceeded")
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -146,37 +200,23 @@ def parse_pdf(file) -> str:
     return text.strip()
 
 
-def resume_paths(resume_type: str = "default") -> tuple[Path, Path]:
-    """resume_type별 파일 경로 반환"""
-    return (
-        RESUMES_DIR / f"{resume_type}_raw.txt",
-        RESUMES_DIR / f"{resume_type}.json",
-    )
-
-
-def save_resume(raw_text: str, structured: dict, resume_type: str = "default"):
-    """raw_text + JSON 둘 다 저장"""
-    raw_path, json_path = resume_paths(resume_type)
-    raw_path.write_text(raw_text, encoding="utf-8")
-    json_path.write_text(json.dumps(structured, ensure_ascii=False, indent=2), encoding="utf-8")
-    log.info(f"[2] JSON loaded — resume saved to resumes/{resume_type}.json")
-
-
-def load_resume(resume_type: str = "default") -> tuple[str, dict] | None:
-    """저장된 이력서 로드 (raw, structured)"""
-    raw_path, json_path = resume_paths(resume_type)
-    if not json_path.exists():
-        return None
-    raw = raw_path.read_text(encoding="utf-8") if raw_path.exists() else ""
-    structured = json.loads(json_path.read_text(encoding="utf-8"))
-    return raw, structured
-
-
-def list_resume_types() -> list[str]:
-    """저장된 resume_type 목록"""
+def list_samples() -> list[str]:
+    """샘플 이력서 목록 (확장자 제외)"""
     return sorted(
-        p.stem for p in RESUMES_DIR.glob("*.json")
+        p.stem for p in SAMPLES_DIR.glob("*.json")
     )
+
+
+def load_sample(sample_name: str) -> dict | None:
+    """샘플 이력서 로드"""
+    path = SAMPLES_DIR / f"{sample_name}.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        log.error(f"샘플 로드 실패 ({sample_name}): {e}")
+        raise ValueError(f"샘플 파일 파싱 실패: {e}") from e
 
 
 def save_jd_log(jd: str, company: str):
@@ -229,12 +269,12 @@ def validate_resume(data: dict) -> dict:
         "summary": sanitize(data.get("summary")),
         "experience": [
             {
-                "company": sanitize(exp.get("company")) if isinstance(exp, dict) else "",
-                "role": sanitize(exp.get("role")) if isinstance(exp, dict) else "",
-                "period": sanitize(exp.get("period")) if isinstance(exp, dict) else "",
+                "company": sanitize(exp.get("company", "")) if isinstance(exp, dict) else "",
+                "role": sanitize(exp.get("role") or exp.get("title", "")) if isinstance(exp, dict) else "",
+                "period": sanitize(exp.get("period", "")) if isinstance(exp, dict) else "",
                 "bullets": [
-                    sanitize(b) for b in (exp.get("bullets", []) if isinstance(exp, dict) else [])
-                ] if isinstance(exp.get("bullets"), list) else [],
+                    sanitize(b) for b in (exp.get("bullets") or exp.get("responsibilities") or exp.get("description") or [] if isinstance(exp, dict) else [])
+                ] if isinstance((exp.get("bullets") or exp.get("responsibilities") or exp.get("description")), list) else [],
             }
             for exp in (data.get("experience") or [])
             if isinstance(exp, dict)
@@ -243,15 +283,6 @@ def validate_resume(data: dict) -> dict:
     }
 
 
-def structure_resume(raw_text: str) -> dict:
-    """Claude로 이력서 구조화 (고정 스키마)"""
-    msg = client.messages.create(
-        model="claude-sonnet-4-6-20250514",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": PARSE_PROMPT + raw_text}],
-    )
-    data = extract_json(msg.content[0].text)
-    return validate_resume(data)
 
 
 def rewrite_for_jd(raw_text: str, structured: dict, jd: str) -> dict:
@@ -262,13 +293,13 @@ def rewrite_for_jd(raw_text: str, structured: dict, jd: str) -> dict:
 
     prompt = REWRITE_PROMPT.replace("{resume}", resume_str).replace("{jd}", jd)
 
-    msg = client.messages.create(
-        model="claude-sonnet-4-6-20250514",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    log.info("[4] Claude rewrite done")
-    data = extract_json(msg.content[0].text)
+    response = call_deepseek(prompt)
+    log.info("[4] DeepSeek rewrite done")
+    choices = response.get("choices") or []
+    if not choices:
+        raise ValueError("DeepSeek 응답에 선택지가 없습니다")
+    content = choices[0].get("message", {}).get("content", "")
+    data = extract_json(content)
     return validate_resume(data)
 
 
@@ -298,78 +329,10 @@ def json_to_html(data: dict) -> str:
 
 
 def json_to_pdf(data: dict, pdf_path: str):
-    """JSON → PDF 직접 생성 (fpdf2)"""
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.add_page()
-
-    # 한글 폰트 fallback: 시스템 폰트 탐색
-    font_added = False
-    for font_path in [
-        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
-        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    ]:
-        if Path(font_path).exists():
-            pdf.add_font("Korean", "", font_path, uni=True)
-            pdf.set_font("Korean", size=11)
-            font_added = True
-            break
-    if not font_added:
-        pdf.set_font("Helvetica", size=11)
-
-    # Name
-    pdf.set_font_size(22)
-    pdf.cell(0, 12, data.get("name", ""), new_x="LMARGIN", new_y="NEXT")
-
-    # Title
-    pdf.set_font_size(12)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 8, data.get("title", ""), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(4)
-
-    # Summary
-    pdf.set_font_size(11)
-    pdf.multi_cell(0, 6, data.get("summary", ""))
-    pdf.ln(6)
-
-    # Experience
-    pdf.set_font_size(13)
-    pdf.cell(0, 8, "EXPERIENCE", new_x="LMARGIN", new_y="NEXT")
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(4)
-
-    pdf.set_font_size(11)
-    for exp in data.get("experience", []):
-        # Company + period
-        pdf.set_font_size(11)
-        company = exp.get("company", "")
-        period = exp.get("period", "")
-        pdf.cell(0, 7, f"{company}  —  {period}", new_x="LMARGIN", new_y="NEXT")
-
-        # Role
-        pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 6, exp.get("role", ""), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_text_color(0, 0, 0)
-
-        # Bullets
-        for bullet in exp.get("bullets", []):
-            pdf.cell(5)
-            pdf.multi_cell(0, 5, f"•  {bullet}")
-        pdf.ln(4)
-
-    # Skills
-    pdf.set_font_size(13)
-    pdf.cell(0, 8, "SKILLS", new_x="LMARGIN", new_y="NEXT")
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(4)
-
-    pdf.set_font_size(10)
-    skills_text = "  |  ".join(data.get("skills", []))
-    pdf.multi_cell(0, 6, skills_text)
-
-    pdf.output(pdf_path)
+    """JSON → PDF 직접 생성 (사실상 사용 안 함 - HTML로 대체)"""
+    # HTML을 PDF로 변환하기 위해 HTML 파일만 저장하고
+    # 클라이언트에서 print-to-PDF 사용
+    pass
 
 
 def extract_company_name(jd: str) -> str:
@@ -391,126 +354,145 @@ def extract_company_name(jd: str) -> str:
 
 @app.route("/")
 def index():
-    types = list_resume_types()
-    has_resume = len(types) > 0
-    return render_template("index.html", has_resume=has_resume, resume_types=types)
+    samples = list_samples()
+    return render_template("index.html", samples=samples)
 
 
-@app.route("/upload", methods=["POST"])
-def upload():
-    file = request.files.get("pdf")
-    if not file or not file.filename.endswith(".pdf"):
-        return jsonify({"error": "PDF 파일을 업로드해주세요"}), 400
-
-    resume_type = request.form.get("resume_type", "default").strip() or "default"
-
-    raw_text = parse_pdf(file)
-    log.info("[1] PDF parsed" + (" (text extracted)" if raw_text else " (no text — raw saved)"))
-
-    # raw_text 항상 저장
-    raw_path, _ = resume_paths(resume_type)
-    raw_path.write_text(raw_text or "[PDF text extraction failed]", encoding="utf-8")
-
-    if not raw_text:
-        return jsonify({"error": "PDF에서 텍스트를 추출할 수 없습니다. 원본은 raw 파일에 저장됨."}), 400
-
-    try:
-        structured = structure_resume(raw_text)
-    except Exception as exc:
-        log.error("[2] Claude parsing failed", exc_info=exc)
-        return jsonify({"error": "이력서 파싱 중에 오류가 발생했습니다. 로그를 확인해주세요."}), 500
-    save_resume(raw_text, structured, resume_type)
-
-    return jsonify({"ok": True, "structured": structured, "resume_type": resume_type})
-
-
-@app.route("/generate", methods=["POST"])
+@app.route("/generate", methods=["POST", "OPTIONS"])
 def generate():
     """
-    JD 입력 → 이력서 재작성 → PDF 생성
+    샘플 선택 → JD 입력 → 이력서 재작성 → PDF 생성
 
-    Request: { "jd_text": "...", "resume_type": "product" }
-    Flow:
-      1. JSON 이력서 로드 (resume_type 기준)
-      2. JD 텍스트 입력 받음
-      3. Claude API로 resume + JD 전달
-      4. summary + experience 재작성
-      5. HTML 생성
-      6. PDF 생성
-      7. 파일 반환
+    Request: { "sample": "igaming_am", "jd_text": "..." }
     """
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True})
+
     body = request.json or {}
-    resume_type = body.get("resume_type", "default").strip() or "default"
-    jd = body.get("jd_text", body.get("jd", "")).strip()
+    sample_name = body.get("sample", "").strip()
+    jd = body.get("jd_text", "").strip()
 
-    # [1] JSON 이력서 로드
-    data = load_resume(resume_type)
-    if not data:
-        return jsonify({"error": f"'{resume_type}' 타입 이력서가 없습니다. 먼저 업로드해주세요."}), 400
+    # [1] 샘플 이력서 로드
+    if not sample_name:
+        return jsonify({"error": "샘플을 선택해주세요"}), 400
 
-    raw_text, structured = data
-    log.info(f"[1] Resume loaded — type: {resume_type}")
+    try:
+        sample = load_sample(sample_name)
+        if not sample:
+            return jsonify({"error": f"'{sample_name}' 샘플을 찾을 수 없습니다"}), 404
+    except Exception as exc:
+        log.error(f"[1] Sample load failed ({sample_name})", exc_info=exc)
+        return jsonify({"error": "샘플 로드 중 오류가 발생했습니다"}), 500
 
-    # [2] JD 텍스트 검증
+    log.info(f"[1] Sample loaded — {sample_name}")
+
+    if not OPENROUTER_API_KEY:
+        log.error("OpenRouter API key is not configured")
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "OpenRouter API 키가 설정되지 않았습니다. "
+                        "OPENROUTER_API_KEY 또는 OPENAI_API_KEY 환경변수를 설정하고 서버를 다시 시작하세요."
+                    )
+                }
+            ),
+            503,
+        )
+
+    # [2] JD 검증
     if not jd:
-        return jsonify({"error": "JD를 입력해주세요 (jd_text 필드)"}), 400
+        return jsonify({"error": "JD를 입력해주세요"}), 400
 
     # [3] JD 저장 + 회사명 추출
     company = extract_company_name(jd)
     save_jd_log(jd, company)
 
-    # [4] Claude API로 resume + JD → 재작성
+    # [4] Claude API로 sample + JD → 재작성
     try:
-        rewritten = rewrite_for_jd(raw_text, structured, jd)
+        rewritten = rewrite_for_jd("", sample, jd)
+    except httpx.HTTPStatusError as exc:
+        log.error("[4] DeepSeek HTTP error", exc_info=exc)
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "이력서 재작성 API가 오류를 반환했습니다. "
+                        "OPENROUTER_API_KEY가 유효하고 DeepSeek 서비스가 정상인지 확인하세요."
+                    )
+                }
+            ),
+            502,
+        )
+    except httpx.RequestError as exc:
+        log.error("[4] DeepSeek request failed", exc_info=exc)
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "이력서 재작성 API 호출에 실패했습니다. "
+                        "네트워크 상태를 확인하거나 나중에 다시 시도해주세요."
+                    )
+                }
+            ),
+            502,
+        )
     except Exception as exc:
-        log.error("[4] Claude rewrite failed", exc_info=exc)
-        return jsonify({"error": "JD 기반 재작성 중 오류가 발생했습니다. 로그를 확인해주세요."}), 500
+        log.error("[4] DeepSeek rewrite failed", exc_info=exc)
+        return jsonify({"error": "이력서 재작성 중 오류가 발생했습니다. 로그를 확인해주세요."}), 500
 
     # [5] JSON → HTML 생성
     html = json_to_html(rewritten)
     log.info("[5] HTML generated")
 
-    # [6] HTML → PDF 생성
+    # [6] HTML 저장 (브라우저에서 print-to-PDF 사용)
     date_str = datetime.now().strftime("%Y%m%d")
     filename = f"{company}_{date_str}"
 
     html_path = OUTPUTS_DIR / f"{filename}.html"
-    pdf_path = OUTPUTS_DIR / f"{filename}.pdf"
     html_path.write_text(html, encoding="utf-8")
-    json_to_pdf(rewritten, str(pdf_path))
 
-    log.info(f"[6] PDF generated — outputs/{filename}.pdf")
+    log.info(f"[6] HTML saved — outputs/{filename}.html")
 
-    # [7] 결과 반환
     return jsonify({
         "ok": True,
         "html": html,
         "filename": filename,
         "pdf_path": f"{filename}.pdf",
-        "resume_type": resume_type,
+        "sample": sample_name,
     })
 
 
-@app.route("/download/<filename>")
-def download(filename):
-    pdf_path = OUTPUTS_DIR / f"{filename}.pdf"
-    if not pdf_path.exists():
-        return "PDF를 찾을 수 없습니다", 404
-    return send_file(pdf_path, as_attachment=True, download_name=f"{filename}.pdf")
+@app.route("/view/<filename>")
+def view_resume(filename):
+    """HTML 이력서를 브라우저에서 표시"""
+    html_path = OUTPUTS_DIR / f"{filename}.html"
+    if not html_path.exists():
+        return "이력서를 찾을 수 없습니다", 404
+    return send_file(html_path, mimetype="text/html")
 
 
-@app.route("/resume")
-@app.route("/resume/<resume_type>")
-def get_resume(resume_type="default"):
-    data = load_resume(resume_type)
-    if not data:
-        return jsonify({"error": f"'{resume_type}' 타입 이력서가 없습니다"}), 404
-    return jsonify(data[1])
+@app.route("/samples")
+def get_samples():
+    """사용 가능한 샘플 목록"""
+    return jsonify(list_samples())
 
 
-@app.route("/resume-types")
-def get_resume_types():
-    return jsonify(list_resume_types())
+@app.after_request
+def set_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
+
+
+@app.route("/sample/<name>")
+def get_sample(name):
+    """특정 샘플 조회"""
+    sample = load_sample(name)
+    if not sample:
+        return jsonify({"error": f"'{name}' 샘플을 찾을 수 없습니다"}), 404
+    return jsonify(sample)
 
 
 @app.errorhandler(RequestEntityTooLarge)
@@ -519,4 +501,4 @@ def handle_too_large(error):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=8080)

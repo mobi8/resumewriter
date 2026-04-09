@@ -1,0 +1,103 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font <</F1 4 0 R /F2 5 0 R>>> /Contents 6 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+6 0 obj
+<< /Length 2706 >>
+stream
+BT
+/F2 16 Tf
+1 0 0 1 40.00 820.00 Tm
+(Resume Writer App Summary) Tj
+/F2 12 Tf
+1 0 0 1 40.00 794.00 Tm
+(What it is) Tj
+/F1 10 Tf
+1 0 0 1 40.00 776.00 Tm
+(Flask-backed web tool that rewrites curated sample resumes to mirror a provided job description by coordinating with OpenRouter/DeepSeek and producing a browser-printable HTML/PDF output.) Tj
+/F2 12 Tf
+1 0 0 1 40.00 760.00 Tm
+(Who it is for) Tj
+/F1 10 Tf
+1 0 0 1 40.00 742.00 Tm
+(Career coaches or job seekers who need to transform an existing resume into a JD-focused pitch without manually crafting every bullet point.) Tj
+/F2 12 Tf
+1 0 0 1 40.00 726.00 Tm
+(What it does) Tj
+/F1 10 Tf
+1 0 0 1 52.00 708.00 Tm
+(- Hosts resumes in JSON under resumes/ and exposes a sample picker plus listing APIs for automation.) Tj
+/F1 10 Tf
+1 0 0 1 52.00 693.50 Tm
+(- Collects job descriptions through the React-like form in templates/index.html and posts them to /generate.) Tj
+/F1 10 Tf
+1 0 0 1 52.00 679.00 Tm
+(- Logs each JD with timestamps under logs/ while deriving company names for file naming.) Tj
+/F1 10 Tf
+1 0 0 1 52.00 664.50 Tm
+(- Calls OpenAI DeepSeek via OpenRouter to rewrite the selected sample into a JD-aligned structure.) Tj
+/F1 10 Tf
+1 0 0 1 52.00 650.00 Tm
+(- Sanitizes and styles the rewritten JSON as HTML and saves the document under outputs/ for preview/print.) Tj
+/F1 10 Tf
+1 0 0 1 52.00 635.50 Tm
+(- Serves the HTML resume for live preview and lets the browser print or download PDFs.) Tj
+/F1 10 Tf
+1 0 0 1 52.00 621.00 Tm
+(- Offers simple APIs \(samples, sample/<name>, view/<filename>\) for automation or integration.) Tj
+/F2 12 Tf
+1 0 0 1 40.00 606.50 Tm
+(How it works) Tj
+/F1 10 Tf
+1 0 0 1 40.00 588.50 Tm
+(templates/index.html renders the form, sample picker, and preview iframe while DOMPurify keeps previews safe.) Tj
+/F1 10 Tf
+1 0 0 1 40.00 572.50 Tm
+(Client-side JS posts JSON payloads to Flask's /generate endpoint; the app loads a sample resume JSON, validates the JD, logs it, and calls DeepSeek via the OpenAI client.) Tj
+/F1 10 Tf
+1 0 0 1 40.00 556.50 Tm
+(DeepSeek returns sanitized resume JSON, json_to_html formats it, and the result is written to outputs/ for preview/print.) Tj
+/F1 10 Tf
+1 0 0 1 40.00 540.50 Tm
+(/view/<filename> and /samples expose stored HTML and sample metadata so integrations or the browser can re-render without re-running DeepSeek.) Tj
+/F2 12 Tf
+1 0 0 1 40.00 524.50 Tm
+(How to run) Tj
+/F1 10 Tf
+1 0 0 1 52.00 506.50 Tm
+(- source ./venv/bin/activate \(or let run.sh bootstrap the venv\)) Tj
+/F1 10 Tf
+1 0 0 1 52.00 492.00 Tm
+(- pip install -r requirements.txt) Tj
+/F1 10 Tf
+1 0 0 1 52.00 477.50 Tm
+(- python app.py \(or ./run.sh to set up the venv + launch Flask at http://localhost:8080\)) Tj
+ET
+endstream
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000253 00000 n 
+0000000323 00000 n 
+0000000398 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+3155
+%%EOF
