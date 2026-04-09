@@ -119,51 +119,56 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <style>
-  @page {{ size: A4; margin: 20mm 18mm; }}
-  body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #222; font-size: 11pt; line-height: 1.5; margin: 0; }}
+  @page {{ size: A4; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 20px 18px; padding: 0; }}
 
-  .header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }}
+  @media print {{
+    body {{ margin: 20mm 18mm; }}
+    * {{ outline: none !important; }}
+  }}
+
+  .resume-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #d7d7d7; }}
   .header-left {{ flex: 1; }}
-  .header-right {{ text-align: right; font-size: 9pt; color: #555; white-space: nowrap; line-height: 1.6; }}
-  .header-right a {{ color: #0066cc; text-decoration: none; }}
+  .header-left h1 {{ font-size: 2pt; margin: 0 0 4px; color: #0f0f0f; line-height: 1; }}
+  .position-title {{ font-size: 16pt; font-weight: 600; color: #0066cc; margin: 4px 0 6px; }}
+  .location-availability {{ font-size: 10pt; color: #636363; line-height: 1.4; margin-bottom: 6px; }}
+  .header-right {{ width: 220px; text-align: right; font-size: 11pt; color: #444; line-height: 1.3; }}
+  .contact-row {{ margin-bottom: 10px; }}
+  .contact-row strong {{ display: block; font-size: 9pt; letter-spacing: 0.4px; text-transform: uppercase; color: #7a7a7a; margin-bottom: 2px; }}
+  .contact-row a {{ color: #2365dd; text-decoration: none; font-weight: 500; }}
+  .summary {{ margin-top: 4px; margin-bottom: 14px; color: #3b3b3b; font-size: 11pt; line-height: 1.5; }}
 
-  h1 {{ font-size: 22pt; margin: 0 0 2px; }}
-  .title {{ font-size: 12pt; color: #555; margin-bottom: 4px; }}
-  .availability {{ font-size: 10pt; color: #666; margin-bottom: 12px; }}
+  h2 {{ font-size: 11pt; font-weight: 600; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 14px 0 8px; letter-spacing: 0.5px; }}
 
-  .summary {{ margin-bottom: 12px; color: #333; font-size: 11pt; }}
+  .exp-item {{ margin-bottom: 10px; }}
+  .exp-header {{ display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }}
+  .exp-title {{ font-weight: 600; font-size: 10.5pt; color: #0066cc; }}
+  .exp-company {{ font-size: 10pt; color: #666; }}
+  .exp-period {{ font-size: 9.5pt; color: #888; }}
+  .exp-meta {{ font-size: 9pt; color: #999; margin-bottom: 3px; }}
 
-  h2 {{ font-size: 13pt; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 1px; color: #444; }}
-  .exp-header {{ display: flex; justify-content: space-between; margin-bottom: 2px; }}
-  .exp-header strong {{ font-size: 11pt; }}
-  .exp-header span {{ color: #666; font-size: 10pt; }}
-  .exp-role {{ color: #555; font-style: italic; margin-bottom: 4px; }}
-  ul {{ padding-left: 18px; margin: 4px 0 8px; }}
-  li {{ margin-bottom: 2px; font-size: 10.5pt; }}
+  ul {{ padding-left: 18px; margin: 4px 0 0 0; }}
+  li {{ margin-bottom: 3px; font-size: 10pt; color: #444; }}
 
-  .skills {{ display: flex; flex-wrap: wrap; gap: 4px; }}
-  .skill-tag {{ background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-size: 10pt; }}
+  .skills {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }}
+  .skill-tag {{ background: #f5f5f5; padding: 4px 10px; border-radius: 3px; font-size: 9.5pt; color: #555; border: 1px solid #e0e0e0; }}
 </style>
 </head>
 <body>
-  <div class="header">
+  <div class="resume-header">
     <div class="header-left">
       <h1>{name}</h1>
-      <div class="title">{title}</div>
-      <div class="availability">{availability}</div>
+      {availability_html}
+      {summary_html}
     </div>
     <div class="header-right">
       {contact_html}
     </div>
   </div>
 
-  <div class="summary">{summary}</div>
-
-  <h2>Experience</h2>
   {experience_html}
 
-  <h2>Skills</h2>
-  <div class="skills">{skills_html}</div>
+  {skills_html}
 </body>
 </html>"""
 #
@@ -330,53 +335,103 @@ def rewrite_for_jd(raw_text: str, structured: dict, jd: str) -> dict:
 def json_to_html(data: dict) -> str:
     """JSON → HTML 변환 (validate_resume에서 이미 이스케이프됨)"""
 
-    # 연락처 정보 생성
+    # 연락처 정보 생성 (라벨 포함)
     contact_html = ""
     contact = data.get("contact", {}) or {}
     if isinstance(contact, dict):
-        parts = []
-        if contact.get("phone"):
-            parts.append(f'<a href="tel:{contact["phone"]}">{contact["phone"]}</a>')
-        if contact.get("email"):
-            parts.append(f'<a href="mailto:{contact["email"]}">{contact["email"]}</a>')
+        rows = []
         if contact.get("linkedin"):
-            linkedin_url = f'https://linkedin.com/in/{contact["linkedin"]}'
-            parts.append(f'<a href="{linkedin_url}" target="_blank">linkedin.com/in/{contact["linkedin"]}</a>')
-        contact_html = "<br>".join(parts)
+            linkedin_val = contact["linkedin"]
+            if linkedin_val.startswith("http"):
+                linkedin_url = linkedin_val
+            else:
+                linkedin_url = f"https://linkedin.com/in/{linkedin_val}"
+            display_name = linkedin_val.rstrip("/").split("/")[-1]
+            rows.append(
+                '<div class="contact-row"><strong>Linkedin</strong>'
+                f'<a href="{linkedin_url}" target="_blank" rel="noreferrer">{display_name}</a></div>'
+            )
+
+        if contact.get("phone"):
+            rows.append(
+                '<div class="contact-row"><strong>Whatsapp</strong>'
+                f'<a href="tel:{contact["phone"]}">{contact["phone"]}</a></div>'
+            )
+
+        if contact.get("email"):
+            rows.append(
+                '<div class="contact-row"><strong>E-mail</strong>'
+                f'<a href="mailto:{contact["email"]}">{contact["email"]}</a></div>'
+            )
+
+        contact_html = "".join(rows)
 
     # 가용성 정보 생성
     location = data.get("location", "").strip()
     availability = data.get("availability", "").strip()
     availability_text = ""
     if location and availability:
-        availability_text = f"📍 {location} · {availability}"
+        availability_text = f"Based in {location}<br>Available to start immediately"
     elif location:
-        availability_text = f"📍 {location}"
+        availability_text = f"Based in {location}"
     elif availability:
         availability_text = availability
 
+    availability_html = ""
+    if availability_text:
+        availability_html = f'<div class="location-availability">{availability_text}</div>'
+
+    # Summary 섹션
+    summary_html = ""
+    summary = data.get("summary", "").strip()
+    title = data.get("title", "").strip()
+    if title:
+        summary_html += f'<p class="position-title">{title}</p>'
+    if summary:
+        summary_html += f'<div class="summary">{summary}</div>'
+
     # Experience 섹션
-    exp_parts = []
-    for exp in data.get("experience", []) or []:
-        bullets = "".join(f"<li>{b}</li>" for b in (exp.get("bullets") or []))
-        exp_parts.append(
-            f'<div class="exp-header"><strong>{exp.get("company", "")}</strong>'
-            f'<span>{exp.get("period", "")}</span></div>'
-            f'<div class="exp-role">{exp.get("role", "")}</div>'
-            f"<ul>{bullets}</ul>"
-        )
+    exp_html = ""
+    experience = data.get("experience", []) or []
+    if experience:
+        exp_items = []
+        for exp in experience:
+            role = exp.get("role") or exp.get("title", "")
+            company = exp.get("company", "")
+            period = exp.get("period", "")
+            bullets = exp.get("bullets") or exp.get("responsibilities") or exp.get("description") or []
+
+            exp_title = f"{role}"
+            if company:
+                exp_title = f"{role} | {company}"
+
+            bullets_html = "".join(f"<li>{b}</li>" for b in bullets)
+
+            exp_item = f'''<div class="exp-item">
+            <div class="exp-header">
+              <span class="exp-title">{exp_title}</span>
+              <span class="exp-period">{period}</span>
+            </div>
+            <ul>{bullets_html}</ul>
+          </div>'''
+            exp_items.append(exp_item)
+
+        exp_html = f'<h2>Experience</h2>{"".join(exp_items)}'
 
     # Skills 섹션
-    skills = "".join(f'<span class="skill-tag">{s}</span>' for s in (data.get("skills") or []))
+    skills_html = ""
+    skills = data.get("skills", []) or []
+    if skills:
+        skill_tags = "".join(f'<span class="skill-tag">{s}</span>' for s in skills)
+        skills_html = f'<h2>Skills</h2><div class="skills">{skill_tags}</div>'
 
     return RESUME_HTML_TEMPLATE.format(
         name=data.get("name", ""),
-        title=data.get("title", ""),
-        summary=data.get("summary", ""),
         contact_html=contact_html,
-        availability=availability_text,
-        experience_html="".join(exp_parts),
-        skills_html=skills,
+        availability_html=availability_html,
+        summary_html=summary_html,
+        experience_html=exp_html,
+        skills_html=skills_html,
     )
 
 

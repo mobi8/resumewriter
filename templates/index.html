@@ -42,90 +42,132 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.5);
       z-index: 1000;
       justify-content: center;
       align-items: center;
+      padding: 40px;
     }
 
     .modal-overlay.show {
       display: flex;
     }
 
+    /* Main modal wrapper with sidebar layout */
     .modal-container {
-      position: relative;
-      width: 794px;
-      height: 1123px;
+      display: flex;
+      gap: 0;
       background: white;
       border-radius: 8px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 10px 50px rgba(0, 0, 0, 0.3);
+      height: 90vh;
+      max-height: 1200px;
+      width: 100%;
+      max-width: 1200px;
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
     }
 
-    .modal-toolbar {
-      position: absolute;
-      top: 12px;
-      right: 12px;
+    /* Left side: Document */
+    .modal-content {
+      flex: 1;
+      background: #efefef;
       display: flex;
-      gap: 8px;
-      z-index: 10;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 30px;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .modal-content iframe {
+      width: 820px;
+      height: 1160px;
+      border: none;
+      background: white;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+      border-radius: 2px;
+      display: block;
+    }
+
+    /* Right side: Sidebar */
+    .modal-toolbar {
+      width: 280px;
+      background: #2c3e50;
+      padding: 30px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+      border-left: 1px solid #34495e;
+    }
+
+    .modal-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .modal-section-label {
+      color: #ecf0f1;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #34495e;
     }
 
     .modal-btn {
-      background: rgba(255, 255, 255, 0.95);
-      border: 1px solid #ddd;
-      padding: 8px 14px;
-      border-radius: 6px;
-      font-size: 12px;
+      background: #34495e;
+      color: #ecf0f1;
+      border: 1px solid #34495e;
+      padding: 12px 16px;
+      border-radius: 4px;
+      font-size: 13px;
       cursor: pointer;
       transition: all 0.2s;
       display: flex;
       align-items: center;
-      gap: 4px;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
     }
 
     .modal-btn:hover {
-      background: white;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      background: #475569;
+      border-color: #475569;
     }
 
-    .modal-btn.edit-btn {
-      background: #2196F3;
+    .modal-btn.primary {
+      background: #3498db;
+      border-color: #3498db;
       color: white;
-      border: none;
+      font-weight: 500;
     }
 
-    .modal-btn.edit-btn:hover {
-      background: #1976D2;
+    .modal-btn.primary:hover {
+      background: #2980b9;
+      border-color: #2980b9;
     }
 
-    .modal-btn.close-btn {
-      background: #f44336;
+    .modal-btn.danger {
+      background: #e74c3c;
+      border-color: #e74c3c;
       color: white;
-      border: none;
+      margin-top: auto;
     }
 
-    .modal-btn.close-btn:hover {
-      background: #d32f2f;
+    .modal-btn.danger:hover {
+      background: #c0392b;
+      border-color: #c0392b;
     }
 
-    .modal-content {
-      flex: 1;
-      overflow: auto;
-      padding: 20px;
-      background: white;
-      min-height: 0; /* flex 아이템에서 필수 */
-      display: flex;
-      flex-direction: column;
-    }
-
-    .modal-content iframe {
-      width: 100%;
-      height: 100%;
-      border: 1px solid #ddd;
-      flex: 1;
+    .modal-btn:disabled {
+      background: #7f8c8d;
+      border-color: #7f8c8d;
+      cursor: not-allowed;
+      opacity: 0.6;
     }
 
     /* 편집 모드 활성화 */
@@ -168,13 +210,22 @@
   <!-- A4 Resume Modal -->
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal-container">
-      <div class="modal-toolbar">
-        <button class="modal-btn edit-btn" id="editBtn" onclick="toggleEdit()">✏️ 편집</button>
-        <button class="modal-btn" onclick="printResume()">🖨️ PDF 저장</button>
-        <button class="modal-btn close-btn" onclick="closeModal()">✕ 닫기</button>
-      </div>
       <div class="modal-content">
-        <iframe id="resumeFrame" style="background: white;"></iframe>
+        <iframe id="resumeFrame"></iframe>
+      </div>
+      <div class="modal-toolbar">
+        <div class="modal-section">
+          <div class="modal-section-label">보기</div>
+          <button class="modal-btn" id="editBtn" onclick="toggleEdit()">✏️ 편집 모드</button>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-label">출력</div>
+          <button class="modal-btn primary" onclick="printResume()">🖨️ PDF 저장</button>
+        </div>
+        <div style="flex: 1;"></div>
+        <div class="modal-section">
+          <button class="modal-btn danger" onclick="closeModal()">✕ 닫기</button>
+        </div>
       </div>
     </div>
   </div>
@@ -222,8 +273,8 @@
       // 모달 표시
       modalOverlay.classList.add('show');
       isEditingMode = false;
-      editBtn.textContent = '✏️ 편집';
-      editBtn.style.background = '#2196F3';
+      editBtn.textContent = '✏️ 편집 모드';
+      editBtn.classList.remove('primary');
 
       console.log('✓ 모달 열림, 이력서 로드 중...');
     }
@@ -231,8 +282,20 @@
     function closeModal() {
       modalOverlay.classList.remove('show');
       isEditingMode = false;
-      editBtn.textContent = '✏️ 편집';
-      editBtn.style.background = '#2196F3';
+      editBtn.textContent = '✏️ 편집 모드';
+      editBtn.classList.remove('primary');
+
+      // iframe 초기화
+      try {
+        const doc = resumeFrame.contentDocument;
+        if (doc && doc.body) {
+          doc.body.contentEditable = 'false';
+          doc.body.style.outline = 'none';
+          doc.body.style.background = 'white';
+        }
+      } catch (e) {
+        // ignore
+      }
     }
 
     function toggleEdit() {
@@ -248,16 +311,19 @@
 
         if (isEditingMode) {
           body.contentEditable = 'true';
-          body.style.outline = '2px dashed #2196F3';
-          body.style.padding = '10px';
+          body.style.outline = '2px dashed #3498db';
+          body.style.padding = '15px';
+          body.style.background = '#fafafa';
           editBtn.textContent = '✅ 완료';
-          editBtn.style.background = '#4CAF50';
+          editBtn.classList.remove('modal-btn');
+          editBtn.classList.add('modal-btn', 'primary');
           body.focus();
         } else {
           body.contentEditable = 'false';
           body.style.outline = 'none';
-          editBtn.textContent = '✏️ 편집';
-          editBtn.style.background = '#2196F3';
+          body.style.background = 'white';
+          editBtn.textContent = '✏️ 편집 모드';
+          editBtn.classList.remove('primary');
         }
       } catch (e) {
         console.error('편집 모드 토글 오류:', e);
@@ -273,13 +339,21 @@
           return;
         }
 
+        // 편집 모드 정리
+        if (isEditingMode) {
+          doc.body.contentEditable = 'false';
+          doc.body.style.outline = 'none';
+          doc.body.style.background = 'white';
+        }
+
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
           alert('팝업 차단 설정으로 인해 인쇄창을 열 수 없습니다. 팝업 차단을 해제해주세요.');
           return;
         }
 
-        printWindow.document.write(doc.documentElement.outerHTML);
+        const htmlContent = doc.documentElement.outerHTML;
+        printWindow.document.write(htmlContent);
         printWindow.document.close();
 
         // 문서 로드 후 인쇄
