@@ -127,16 +127,17 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
     * {{ outline: none !important; }}
   }}
 
-  .resume-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #d7d7d7; }}
+  .resume-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 10px; padding-bottom: 12px; border-bottom: 1px solid #d8d8d8; }}
   .header-left {{ flex: 1; }}
-  .header-left h1 {{ font-size: 2pt; margin: 0 0 4px; color: #0f0f0f; line-height: 1; }}
-  .position-title {{ font-size: 16pt; font-weight: 600; color: #0066cc; margin: 4px 0 6px; }}
-  .location-availability {{ font-size: 10pt; color: #636363; line-height: 1.4; margin-bottom: 6px; }}
-  .header-right {{ width: 220px; text-align: right; font-size: 11pt; color: #444; line-height: 1.3; }}
-  .contact-row {{ margin-bottom: 10px; }}
-  .contact-row strong {{ display: block; font-size: 9pt; letter-spacing: 0.4px; text-transform: uppercase; color: #7a7a7a; margin-bottom: 2px; }}
-  .contact-row a {{ color: #2365dd; text-decoration: none; font-weight: 500; }}
-  .summary {{ margin-top: 4px; margin-bottom: 14px; color: #3b3b3b; font-size: 11pt; line-height: 1.5; }}
+  .header-left h1 {{ font-size: 30pt; margin: 0 0 4px; color: #111; line-height: 1.1; }}
+  .location-availability {{ font-size: 10pt; color: #6a6a6a; line-height: 1.4; margin-bottom: 2px; }}
+  .header-right {{ width: 200px; text-align: right; font-size: 10pt; color: #444; line-height: 1.4; }}
+  .contact-row {{ margin-bottom: 8px; }}
+  .contact-row a {{ color: #1c6ce4; text-decoration: none; font-weight: 500; font-size: 11pt; }}
+  .contact-row span {{ font-size: 10pt; color: #282828; }}
+  .summary-block {{ margin-top: 12px; margin-bottom: 16px; color: #343434; font-size: 11pt; line-height: 1.6; width: 100%; }}
+  .summary-block .position-title {{ margin: 0 0 8px; font-size: 15pt; font-weight: 600; color: #2c2c2c; }}
+  .summary-text {{ margin: 0; }}
 
   h2 {{ font-size: 11pt; font-weight: 600; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 14px 0 8px; letter-spacing: 0.5px; }}
 
@@ -159,12 +160,13 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="header-left">
       <h1>{name}</h1>
       {availability_html}
-      {summary_html}
     </div>
     <div class="header-right">
       {contact_html}
     </div>
   </div>
+
+  {summary_block}
 
   {experience_html}
 
@@ -346,22 +348,24 @@ def json_to_html(data: dict) -> str:
                 linkedin_url = linkedin_val
             else:
                 linkedin_url = f"https://linkedin.com/in/{linkedin_val}"
-            display_name = linkedin_val.rstrip("/").split("/")[-1]
             rows.append(
-                '<div class="contact-row"><strong>Linkedin</strong>'
-                f'<a href="{linkedin_url}" target="_blank" rel="noreferrer">{display_name}</a></div>'
+                '<div class="contact-row">'
+                f'<a href="{linkedin_url}" target="_blank" rel="noreferrer">Linkedin</a>'
+                "</div>"
             )
 
         if contact.get("phone"):
             rows.append(
-                '<div class="contact-row"><strong>Whatsapp</strong>'
-                f'<a href="tel:{contact["phone"]}">{contact["phone"]}</a></div>'
+                '<div class="contact-row">'
+                f'<span>{contact["phone"]}</span>'
+                "</div>"
             )
 
         if contact.get("email"):
             rows.append(
-                '<div class="contact-row"><strong>E-mail</strong>'
-                f'<a href="mailto:{contact["email"]}">{contact["email"]}</a></div>'
+                '<div class="contact-row">'
+                f'<span>{contact["email"]}</span>'
+                "</div>"
             )
 
         contact_html = "".join(rows)
@@ -382,13 +386,16 @@ def json_to_html(data: dict) -> str:
         availability_html = f'<div class="location-availability">{availability_text}</div>'
 
     # Summary 섹션
-    summary_html = ""
     summary = data.get("summary", "").strip()
     title = data.get("title", "").strip()
-    if title:
-        summary_html += f'<p class="position-title">{title}</p>'
-    if summary:
-        summary_html += f'<div class="summary">{summary}</div>'
+    summary_block = ""
+    if title or summary:
+        block_parts = []
+        if title:
+            block_parts.append(f'<p class="position-title">{title}</p>')
+        if summary:
+            block_parts.append(f'<p class="summary-text">{summary}</p>')
+        summary_block = '<div class="summary-block">' + "".join(block_parts) + "</div>"
 
     # Experience 섹션
     exp_html = ""
@@ -429,7 +436,7 @@ def json_to_html(data: dict) -> str:
         name=data.get("name", ""),
         contact_html=contact_html,
         availability_html=availability_html,
-        summary_html=summary_html,
+        summary_block=summary_block,
         experience_html=exp_html,
         skills_html=skills_html,
     )
