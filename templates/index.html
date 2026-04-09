@@ -114,14 +114,18 @@
     .modal-content {
       flex: 1;
       overflow: auto;
-      padding: 40px;
+      padding: 20px;
       background: white;
+      min-height: 0; /* flex 아이템에서 필수 */
+      display: flex;
+      flex-direction: column;
     }
 
     .modal-content iframe {
       width: 100%;
       height: 100%;
-      border: none;
+      border: 1px solid #ddd;
+      flex: 1;
     }
 
     /* 편집 모드 활성화 */
@@ -170,7 +174,7 @@
         <button class="modal-btn close-btn" onclick="closeModal()">✕ 닫기</button>
       </div>
       <div class="modal-content">
-        <iframe id="resumeFrame" sandbox="allow-same-origin"></iframe>
+        <iframe id="resumeFrame" style="background: white;"></iframe>
       </div>
     </div>
   </div>
@@ -208,11 +212,20 @@
     });
 
     function openModal(html) {
-      resumeFrame.srcDoc = html;
+      // Blob URL을 이용한 안정적인 로드
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+
+      // iframe src 설정
+      resumeFrame.src = url;
+
+      // 모달 표시
       modalOverlay.classList.add('show');
       isEditingMode = false;
       editBtn.textContent = '✏️ 편집';
       editBtn.style.background = '#2196F3';
+
+      console.log('✓ 모달 열림, 이력서 로드 중...');
     }
 
     function closeModal() {
@@ -223,33 +236,59 @@
     }
 
     function toggleEdit() {
-      const doc = resumeFrame.contentDocument || resumeFrame.contentWindow.document;
-      if (!doc) return;
+      try {
+        const doc = resumeFrame.contentDocument;
+        if (!doc || !doc.body) {
+          alert('이력서가 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
+          return;
+        }
 
-      isEditingMode = !isEditingMode;
-      const body = doc.body;
+        isEditingMode = !isEditingMode;
+        const body = doc.body;
 
-      if (isEditingMode) {
-        body.contentEditable = 'true';
-        body.style.outline = '2px dashed #2196F3';
-        editBtn.textContent = '✅ 완료';
-        editBtn.style.background = '#4CAF50';
-        body.focus();
-      } else {
-        body.contentEditable = 'false';
-        body.style.outline = 'none';
-        editBtn.textContent = '✏️ 편집';
-        editBtn.style.background = '#2196F3';
+        if (isEditingMode) {
+          body.contentEditable = 'true';
+          body.style.outline = '2px dashed #2196F3';
+          body.style.padding = '10px';
+          editBtn.textContent = '✅ 완료';
+          editBtn.style.background = '#4CAF50';
+          body.focus();
+        } else {
+          body.contentEditable = 'false';
+          body.style.outline = 'none';
+          editBtn.textContent = '✏️ 편집';
+          editBtn.style.background = '#2196F3';
+        }
+      } catch (e) {
+        console.error('편집 모드 토글 오류:', e);
+        alert('편집 모드를 활성화할 수 없습니다.');
       }
     }
 
     function printResume() {
-      const doc = resumeFrame.contentDocument || resumeFrame.contentWindow.document;
-      if (doc) {
+      try {
+        const doc = resumeFrame.contentDocument;
+        if (!doc) {
+          alert('이력서가 아직 로드되지 않았습니다.');
+          return;
+        }
+
         const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          alert('팝업 차단 설정으로 인해 인쇄창을 열 수 없습니다. 팝업 차단을 해제해주세요.');
+          return;
+        }
+
         printWindow.document.write(doc.documentElement.outerHTML);
         printWindow.document.close();
-        printWindow.print();
+
+        // 문서 로드 후 인쇄
+        setTimeout(() => {
+          printWindow.print();
+        }, 250);
+      } catch (e) {
+        console.error('인쇄 오류:', e);
+        alert('인쇄 중 오류가 발생했습니다.');
       }
     }
 
