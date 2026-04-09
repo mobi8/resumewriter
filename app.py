@@ -55,44 +55,49 @@ RESUME_SCHEMA = {
 
 # ── fixed prompt templates ───────────────────────────────────────────
 
-REWRITE_PROMPT = """You are an expert executive resume writer and recruiter.
+REWRITE_PROMPT = """You are a professional resume writer. Your task is to make the provided resume more relevant to the target job while maintaining honesty and authenticity.
 
-Your task: Rewrite the provided resume to MAXIMIZE match with the target job description.
+## CORE PRINCIPLE:
+**Preserve the actual experience and achievements. Only reframe language and emphasis to highlight genuine relevance to the target role.**
 
-## CRITICAL INSTRUCTIONS:
+## INSTRUCTIONS:
 
-1. **JD Analysis First**: Extract the top 5 must-have skills/experiences from JD
-2. **Experience Reframing**:
-   - Find existing experience that DIRECTLY maps to JD requirements
-   - Rewrite bullets to highlight relevance to JD's core domains
-   - Use JD's terminology and language (e.g., if JD emphasizes "regulatory compliance", match that language)
-3. **Quantify Impact**:
-   - Emphasize numbers, metrics, and measurable outcomes
-   - Connect past achievements to JD's success metrics
-4. **Title Strategy**:
-   - Update title to be as close as possible to target role
-   - Show clear career progression toward target role
-5. **Skills Matching**:
-   - Prioritize skills that appear in both resume AND JD
-   - Add relevant domain expertise if directly evident in experience
-6. **Story Consistency**: Make career narrative show readiness for this specific role
+1. **Keep All Facts & Numbers**:
+   - Every achievement, metric, and timeline MUST stay exactly as provided
+   - Do NOT add or modify quantifiable results
+   - Do NOT exaggerate responsibilities or scope
 
-## CONSTRAINTS:
-- DO NOT invent or exaggerate experience
-- Keep all claims grounded in provided resume data
-- Each bullet max 20 words
-- Focus on delivering high match potential for ATS + hiring manager
+2. **Smart Reframing (Language Only)**:
+   - Use terminology from the JD that matches your actual experience (e.g., if you managed "customer relations" and JD says "stakeholder management", use their term)
+   - Reorder bullets to show most relevant work first
+   - Keep original context - don't distort what you actually did
+
+3. **Title Strategy**:
+   - Adjust title to align with target role IF it reflects your actual position
+   - If current title is "Account Manager" and JD seeks "Product Manager", only change if you genuinely did product work
+   - Keep it honest over perfect match
+
+4. **Skills & Summary**:
+   - Extract skills you actually have that appear in the JD
+   - Write summary highlighting genuine overlaps
+   - Do NOT add skills you don't have
+
+5. **What NOT to Do**:
+   - ❌ Rewrite experience bullets to claim things you didn't do
+   - ❌ Add metrics or achievements that weren't in original
+   - ❌ Expand scope of past roles beyond what actually happened
+   - ❌ Change the narrative of what your role was
 
 ## OUTPUT FORMAT (JSON ONLY - no markdown, no explanation):
 
 {{
   "name": "string",
-  "title": "string (target-role-aligned)",
-  "summary": "string (3-4 sentences, JD-focused, with key metrics)",
+  "title": "string (role title - keep honest)",
+  "summary": "string (3-4 sentences, true highlights that match JD)",
   "experience": [
-    {{"company": "string", "role": "string", "period": "string", "bullets": ["bullet1 (JD-matched)", "bullet2", ...]}}
+    {{"company": "string", "role": "string", "period": "string", "bullets": ["bullet1 (original fact, JD-relevant language)", "bullet2", ...]}}
   ],
-  "skills": ["skill1 (from JD)", "skill2 (from JD)", "skill3"]
+  "skills": ["skill1 (you actually have)", "skill2", "skill3"]
 }}
 
 ## CONTEXT:
@@ -105,7 +110,7 @@ RESUME DATA:
 
 ---
 
-Now rewrite the resume to maximize fit for the target role. JSON only."""
+Now adapt the resume to the target role while keeping all facts and achievements exactly as they are. Change only the framing and language. JSON only."""
 
 # ── HTML template for PDF ────────────────────────────────────────────
 
@@ -115,24 +120,43 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <style>
   @page {{ size: A4; margin: 20mm 18mm; }}
-  body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #222; font-size: 11pt; line-height: 1.5; }}
+  body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #222; font-size: 11pt; line-height: 1.5; margin: 0; }}
+
+  .header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }}
+  .header-left {{ flex: 1; }}
+  .header-right {{ text-align: right; font-size: 9pt; color: #555; white-space: nowrap; line-height: 1.6; }}
+  .header-right a {{ color: #0066cc; text-decoration: none; }}
+
   h1 {{ font-size: 22pt; margin: 0 0 2px; }}
-  .title {{ font-size: 12pt; color: #555; margin-bottom: 12px; }}
-  .summary {{ margin-bottom: 16px; color: #333; }}
-  h2 {{ font-size: 13pt; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 1px; color: #444; }}
+  .title {{ font-size: 12pt; color: #555; margin-bottom: 4px; }}
+  .availability {{ font-size: 10pt; color: #666; margin-bottom: 12px; }}
+
+  .summary {{ margin-bottom: 12px; color: #333; font-size: 11pt; }}
+
+  h2 {{ font-size: 13pt; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 1px; color: #444; }}
   .exp-header {{ display: flex; justify-content: space-between; margin-bottom: 2px; }}
   .exp-header strong {{ font-size: 11pt; }}
   .exp-header span {{ color: #666; font-size: 10pt; }}
   .exp-role {{ color: #555; font-style: italic; margin-bottom: 4px; }}
-  ul {{ padding-left: 18px; margin: 4px 0 12px; }}
-  li {{ margin-bottom: 2px; }}
-  .skills {{ display: flex; flex-wrap: wrap; gap: 6px; }}
-  .skill-tag {{ background: #f0f0f0; padding: 3px 10px; border-radius: 4px; font-size: 10pt; }}
+  ul {{ padding-left: 18px; margin: 4px 0 8px; }}
+  li {{ margin-bottom: 2px; font-size: 10.5pt; }}
+
+  .skills {{ display: flex; flex-wrap: wrap; gap: 4px; }}
+  .skill-tag {{ background: #f0f0f0; padding: 3px 8px; border-radius: 3px; font-size: 10pt; }}
 </style>
 </head>
 <body>
-  <h1>{name}</h1>
-  <div class="title">{title}</div>
+  <div class="header">
+    <div class="header-left">
+      <h1>{name}</h1>
+      <div class="title">{title}</div>
+      <div class="availability">{availability}</div>
+    </div>
+    <div class="header-right">
+      {contact_html}
+    </div>
+  </div>
+
   <div class="summary">{summary}</div>
 
   <h2>Experience</h2>
@@ -305,6 +329,32 @@ def rewrite_for_jd(raw_text: str, structured: dict, jd: str) -> dict:
 
 def json_to_html(data: dict) -> str:
     """JSON → HTML 변환 (validate_resume에서 이미 이스케이프됨)"""
+
+    # 연락처 정보 생성
+    contact_html = ""
+    contact = data.get("contact", {}) or {}
+    if isinstance(contact, dict):
+        parts = []
+        if contact.get("phone"):
+            parts.append(f'<a href="tel:{contact["phone"]}">{contact["phone"]}</a>')
+        if contact.get("email"):
+            parts.append(f'<a href="mailto:{contact["email"]}">{contact["email"]}</a>')
+        if contact.get("linkedin"):
+            linkedin_url = f'https://linkedin.com/in/{contact["linkedin"]}'
+            parts.append(f'<a href="{linkedin_url}" target="_blank">linkedin.com/in/{contact["linkedin"]}</a>')
+        contact_html = "<br>".join(parts)
+
+    # 가용성 정보 생성
+    location = data.get("location", "").strip()
+    availability = data.get("availability", "").strip()
+    availability_text = ""
+    if location and availability:
+        availability_text = f"📍 {location} · {availability}"
+    elif location:
+        availability_text = f"📍 {location}"
+    elif availability:
+        availability_text = availability
+
     # Experience 섹션
     exp_parts = []
     for exp in data.get("experience", []) or []:
@@ -316,13 +366,15 @@ def json_to_html(data: dict) -> str:
             f"<ul>{bullets}</ul>"
         )
 
-    # Skills 섹션 (validate_resume에서 null → []로 변환됨)
+    # Skills 섹션
     skills = "".join(f'<span class="skill-tag">{s}</span>' for s in (data.get("skills") or []))
 
     return RESUME_HTML_TEMPLATE.format(
         name=data.get("name", ""),
         title=data.get("title", ""),
         summary=data.get("summary", ""),
+        contact_html=contact_html,
+        availability=availability_text,
         experience_html="".join(exp_parts),
         skills_html=skills,
     )
@@ -440,6 +492,11 @@ def generate():
     except Exception as exc:
         log.error("[4] DeepSeek rewrite failed", exc_info=exc)
         return jsonify({"error": "이력서 재작성 중 오류가 발생했습니다. 로그를 확인해주세요."}), 500
+
+    # [4.5] 샘플의 연락처 정보 병합
+    rewritten["contact"] = sample.get("contact", {})
+    rewritten["location"] = sample.get("location", "")
+    rewritten["availability"] = sample.get("availability", "")
 
     # [5] JSON → HTML 생성
     html = json_to_html(rewritten)
