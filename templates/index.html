@@ -72,17 +72,17 @@
       flex: 1;
       background: #efefef;
       display: flex;
-      flex-direction: column;
-      align-items: center;
       justify-content: center;
+      align-items: center;
       padding: 40px 30px;
       overflow-y: auto;
       position: relative;
     }
 
     .modal-content iframe {
-      width: 820px;
-      height: 1160px;
+      width: 100%;
+      max-width: 794px;
+      aspect-ratio: 794 / 1123;
       border: none;
       background: white;
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
@@ -220,7 +220,7 @@
         </div>
         <div class="modal-section">
           <div class="modal-section-label">출력</div>
-          <button class="modal-btn primary" onclick="printResume()">🖨️ PDF 저장</button>
+          <button class="modal-btn primary" onclick="savePdf()">💾 PDF 저장</button>
         </div>
         <div style="flex: 1;"></div>
         <div class="modal-section">
@@ -262,7 +262,10 @@
       }
     });
 
-    function openModal(html) {
+    function openModal(html, filename) {
+      // 파일명 저장 (PDF 다운로드 시 사용)
+      window.currentResumeFilename = filename || 'resume';
+
       // Blob URL을 이용한 안정적인 로드
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -331,26 +334,65 @@
       }
     }
 
-    function printResume() {
+    function savePdf() {
       try {
         const iframeWindow = resumeFrame.contentWindow;
-        if (!iframeWindow) {
+        const doc = iframeWindow.document;
+
+        if (!doc || !doc.documentElement) {
           alert('이력서가 아직 로드되지 않았습니다.');
           return;
         }
 
         // 편집 모드 정리
-        const doc = iframeWindow.document;
-        if (doc && doc.body) {
+        if (doc.body) {
           doc.body.contentEditable = 'false';
           doc.body.style.outline = 'none';
           doc.body.style.background = 'white';
         }
 
-        iframeWindow.focus();
-        iframeWindow.print();
+        // iframe의 전체 HTML 추출
+        const htmlContent = doc.documentElement.outerHTML;
+        const filename = window.currentResumeFilename || 'resume';
+
+        // /download-pdf 호출
+        fetch('/download-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            html: htmlContent,
+            filename: filename
+          })
+        })
+        .then(async response => {
+          if (!response.ok) {
+            let errorMsg = `PDF 다운로드 실패 (${response.status})`;
+            try {
+              const payload = await response.json();
+              if (payload?.error) errorMsg = payload.error;
+            } catch (ignore) {}
+            throw new Error(errorMsg);
+          }
+          return response.blob();
+        })
+        .then(blob => {
+          // Blob을 다운로드 링크로 변환
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${filename}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          console.log('✓ PDF 저장 완료');
+        })
+        .catch(e => {
+          console.error('PDF 생성 오류:', e);
+          alert('PDF 저장 중 오류가 발생했습니다: ' + e.message);
+        });
       } catch (e) {
-        console.error('저장/인쇄 오류:', e);
+        console.error('저장 오류:', e);
         alert('PDF 저장 중 오류가 발생했습니다.');
       }
     }
@@ -380,7 +422,7 @@
         if (data.error) { showStatus('genStatus', data.error, 'err'); return; }
 
         showStatus('genStatus', `생성 완료 — ${data.filename}`, 'ok');
-        openModal(data.html);
+        openModal(data.html, data.filename);
       } catch (e) {
         showStatus('genStatus', '오류: ' + e.message, 'err');
       } finally {

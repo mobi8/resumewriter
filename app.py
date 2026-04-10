@@ -3,14 +3,23 @@ import logging
 import re
 import time
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 
 import httpx
 import pdfplumber
 from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
-from fpdf import FPDF
 from flask import Flask, request, render_template, send_file, jsonify
 from werkzeug.exceptions import RequestEntityTooLarge
+
+try:
+    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    sync_playwright = None
+    class PlaywrightTimeoutError(Exception):
+        pass
+    PLAYWRIGHT_AVAILABLE = False
 
 # ── logging ──────────────────────────────────────────────────────────
 
@@ -20,6 +29,9 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("resume")
+
+if not PLAYWRIGHT_AVAILABLE:
+    log.warning("Playwright가 설치되지 않았습니다.")
 
 # ── app setup ────────────────────────────────────────────────────────
 
@@ -118,27 +130,28 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<style>
-  @page {{ size: A4; margin: 0; padding: 0; }}
-  html {{ height: 100%; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 0; padding: 20px 18px; min-height: 1123px; display: flex; flex-direction: column; }}
+  <style>
+    @page {{ size: A4; margin: 20mm 18mm 20mm 18mm; }}
+    html {{ height: 100%; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 0; padding: 20mm 18mm; min-height: 1123px; display: flex; flex-direction: column; width: 100%; box-sizing: border-box; background: #fff; }}
 
-  @media print {{
-    body {{ margin: 20mm 18mm 30mm 18mm; }}
-    * {{ outline: none !important; }}
-  }}
+    @media print {{
+      body {{ margin: 0; padding: 0; }}
+      * {{ outline: none !important; }}
+    }}
 
-  .resume-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 10px; padding-bottom: 12px; border-bottom: 1px solid #d8d8d8; }}
-  .header-left {{ flex: 1; }}
-  .header-left h1 {{ font-size: 30pt; margin: 0 0 4px; color: #111; line-height: 1.1; }}
-  .location-availability {{ font-size: 10pt; color: #6a6a6a; line-height: 1.4; margin-bottom: 2px; }}
-  .header-right {{ width: 200px; text-align: right; font-size: 10pt; color: #444; line-height: 1.4; }}
-  .contact-row {{ margin-bottom: 8px; }}
-  .contact-row a {{ color: #1c6ce4; text-decoration: none; font-weight: 500; font-size: 11pt; }}
-  .contact-row span {{ font-size: 10pt; color: #282828; }}
-  .summary-block {{ margin-top: 12px; margin-bottom: 16px; color: #343434; font-size: 11pt; line-height: 1.6; width: 100%; }}
-  .summary-block .position-title {{ margin: 0 0 8px; font-size: 15pt; font-weight: 600; color: #0066cc }}
-  .summary-text {{ margin: 0; }}
+    .resume-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 4px; padding-bottom: 12px; border-bottom: 1px solid #d8d8d8; }}
+    .header-left {{ flex: 1; }}
+    .header-left h1 {{ font-size: 32pt; margin: 0; color: #111; line-height: 1.1; }}
+    .location-availability {{ font-size: 10pt; color: #6a6a6a; line-height: 1.4; margin: 4px 0 0; }}
+    .header-right {{ width: 220px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; color: #444; }}
+    .contact-row {{ text-align: right; font-size: 10pt; }}
+    .contact-link {{ color: #1c6ce4; text-decoration: none; font-weight: 600; font-size: 11pt; letter-spacing: 0.05em; text-transform: uppercase; }}
+    .contact-link:hover {{ text-decoration: underline; }}
+    .contact-detail {{ font-size: 10pt; color: #222; }}
+    .summary-block {{ margin-top: 12px; margin-bottom: 16px; color: #343434; font-size: 11pt; line-height: 1.6; width: 100%; max-width: none; display: flex; flex-direction: column; gap: 6px; }}
+    .summary-block .position-title {{ margin: 0 0 8px; font-size: 15pt; font-weight: 600; color: #0066cc }}
+    .summary-text {{ margin: 0; max-width: none; }}
 
   h2 {{ font-size: 11pt; font-weight: 600; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 14px 0 8px; letter-spacing: 0.5px; }}
 
@@ -343,29 +356,32 @@ def json_to_html(data: dict) -> str:
     contact = data.get("contact", {}) or {}
     if isinstance(contact, dict):
         rows = []
-        if contact.get("linkedin"):
-            linkedin_val = contact["linkedin"]
+        linkedin_val = contact.get("linkedin", "").strip()
+        phone_val = contact.get("phone", "").strip()
+        email_val = contact.get("email", "").strip()
+
+        if linkedin_val:
             if linkedin_val.startswith("http"):
                 linkedin_url = linkedin_val
             else:
                 linkedin_url = f"https://linkedin.com/in/{linkedin_val}"
             rows.append(
                 '<div class="contact-row">'
-                f'<a href="{linkedin_url}" target="_blank" rel="noreferrer">Linkedin</a>'
+                f'<a class="contact-link" href="{linkedin_url}" target="_blank" rel="noreferrer">Linkedin</a>'
                 "</div>"
             )
 
-        if contact.get("phone"):
+        if phone_val:
             rows.append(
                 '<div class="contact-row">'
-                f'<span>{contact["phone"]}</span>'
+                f'<span class="contact-detail">{phone_val}</span>'
                 "</div>"
             )
 
-        if contact.get("email"):
+        if email_val:
             rows.append(
                 '<div class="contact-row">'
-                f'<span>{contact["email"]}</span>'
+                f'<span class="contact-detail">{email_val}</span>'
                 "</div>"
             )
 
@@ -464,6 +480,8 @@ def extract_company_name(jd: str) -> str:
     return "company"
 
 
+ 
+ 
 # ── routes ───────────────────────────────────────────────────────────
 
 
@@ -581,6 +599,52 @@ def generate():
         "pdf_path": f"{filename}.pdf",
         "sample": sample_name,
     })
+
+
+@app.route("/download-pdf", methods=["POST"])
+def download_pdf():
+    """HTML → PDF 변환 후 다운로드"""
+    body = request.json or {}
+    html_content = body.get("html", "").strip()
+    filename = body.get("filename", "resume").strip()
+
+    if not html_content:
+        return jsonify({"error": "HTML content required"}), 400
+
+    if not PLAYWRIGHT_AVAILABLE:
+        message = "Playwright가 설치되지 않았습니다. pip install playwright && playwright install chromium 명령을 실행하세요."
+        log.error(message)
+        return jsonify({"error": message}), 503
+
+    margins = {"top": "20mm", "right": "18mm", "bottom": "20mm", "left": "18mm"}
+
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.set_content(html_content, wait_until="networkidle")
+                pdf_bytes = page.pdf(
+                    format="A4",
+                    margin=margins,
+                    print_background=True,
+                    prefer_css_page_size=True,
+                )
+            finally:
+                browser.close()
+
+        return send_file(
+            BytesIO(pdf_bytes),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"{filename}.pdf"
+        )
+    except PlaywrightTimeoutError as exc:
+        log.error("Playwright timeout while rendering PDF", exc_info=exc)
+        return jsonify({"error": "PDF 렌더링이 제한 시간을 초과했습니다."}), 504
+    except Exception as e:
+        log.error(f"PDF conversion failed: {e}", exc_info=e)
+        return jsonify({"error": f"PDF 변환 중 오류가 발생했습니다: {str(e)}"}), 500
 
 
 @app.route("/view/<filename>")
