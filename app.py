@@ -144,9 +144,9 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
     .header-left {{ flex: 1; }}
     .header-left h1 {{ font-size: 32pt; margin: 0; color: #111; line-height: 1.1; }}
     .location-availability {{ font-size: 10pt; color: #6a6a6a; line-height: 1.4; margin: 4px 0 0; }}
-    .header-right {{ width: 220px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; color: #444; }}
+    .header-right {{ width: 220px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; color: #444; }}
     .contact-row {{ text-align: right; font-size: 10pt; }}
-    .contact-link {{ color: #1c6ce4; text-decoration: none; font-weight: 600; font-size: 11pt; letter-spacing: 0.05em; text-transform: uppercase; }}
+    .contact-link {{ color: #1c6ce4; text-decoration: none; font-weight: 600; font-size: 11pt; letter-spacing: 0.05em; }}
     .contact-link:hover {{ text-decoration: underline; }}
     .contact-detail {{ font-size: 10pt; color: #222; }}
     .summary-block {{ margin-top: 12px; margin-bottom: 16px; color: #343434; font-size: 11pt; line-height: 1.6; width: 100%; max-width: none; display: flex; flex-direction: column; gap: 6px; }}
@@ -367,7 +367,7 @@ def json_to_html(data: dict) -> str:
                 linkedin_url = f"https://linkedin.com/in/{linkedin_val}"
             rows.append(
                 '<div class="contact-row">'
-                f'<a class="contact-link" href="{linkedin_url}" target="_blank" rel="noreferrer">Linkedin</a>'
+                f'<a class="contact-link" href="{linkedin_url}" target="_blank" rel="noreferrer">linkedin</a>'
                 "</div>"
             )
 
