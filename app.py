@@ -67,38 +67,61 @@ RESUME_SCHEMA = {
 
 # ── fixed prompt templates ───────────────────────────────────────────
 
-REWRITE_PROMPT = """You are a professional resume writer. Your task is to make the provided resume more relevant to the target job while maintaining honesty and authenticity.
+def get_rewrite_prompt(jd: str, resume: str, direction: str | None = None, original_experiences: list | None = None) -> str:
+    """동적으로 프롬프트 생성 (방향성 포함 여부에 따라)"""
+    base_prompt = """You are a professional resume writer. Your task is to make the provided resume more relevant to the target job while maintaining honesty and authenticity.
 
 ## CORE PRINCIPLE:
 **Preserve the actual experience and achievements. Only reframe language and emphasis to highlight genuine relevance to the target role.**
 
-## INSTRUCTIONS:
+## CRITICAL RULES - DO NOT VIOLATE:
 
-1. **Keep All Facts & Numbers**:
-   - Every achievement, metric, and timeline MUST stay exactly as provided
-   - Do NOT add or modify quantifiable results
-   - Do NOT exaggerate responsibilities or scope
+1. **PRESERVE EXISTING STRUCTURE**:
+   - Use EXACTLY the same companies and roles that appear in the resume
+   - Do NOT create new companies or job titles that don't exist in the original
+   - Do NOT remove any existing roles
+   - Keep the same time periods exactly as provided
 
-2. **Smart Reframing (Language Only)**:
-   - Use terminology from the JD that matches your actual experience (e.g., if you managed "customer relations" and JD says "stakeholder management", use their term)
-   - Reorder bullets to show most relevant work first
-   - Keep original context - don't distort what you actually did
+2. **Bullet Point Reframing Only**:
+   - You may reorder existing bullets to show most relevant first
+   - You may rephrase bullets using JD terminology
+   - You CANNOT add new bullets that describe work not mentioned in original
+   - You CANNOT remove bullets from existing experiences
+   - Keep metrics, numbers, and quantifiable achievements exactly the same
 
-3. **Title Strategy**:
-   - Adjust title to align with target role IF it reflects your actual position
-   - If current title is "Account Manager" and JD seeks "Product Manager", only change if you genuinely did product work
-   - Keep it honest over perfect match
+3. **Skills**:
+   - Extract ONLY skills that already exist in the resume
+   - Prioritize skills mentioned in the JD that you genuinely have
+   - Do NOT invent new skills
+   - Do NOT list skills not found in experience bullets or original resume
 
-4. **Skills & Summary**:
-   - Extract skills you actually have that appear in the JD
-   - Write summary highlighting genuine overlaps
-   - Do NOT add skills you don't have
+4. **Title & Summary**:
+   - Title: adjust only if the new title genuinely reflects your actual role
+   - Summary: highlight real overlaps between your actual experience and the JD
+   - Do NOT claim expertise you don't have
+   - Keep summary grounded in your actual background
 
-5. **What NOT to Do**:
-   - ❌ Rewrite experience bullets to claim things you didn't do
-   - ❌ Add metrics or achievements that weren't in original
-   - ❌ Expand scope of past roles beyond what actually happened
-   - ❌ Change the narrative of what your role was
+5. **What NOT to Do** (ABSOLUTE):
+   - ❌ Create entirely new companies (e.g., "Game Development Manager | Netmarble" if not in original)
+   - ❌ Invent job responsibilities that aren't mentioned in the resume
+   - ❌ Change the fundamental narrative of your roles
+   - ❌ Add metrics or achievements that weren't there
+   - ❌ Remove real experience to make room for fake ones"""
+
+    if direction:
+        base_prompt += f"""
+
+6. **STRATEGIC DIRECTION (Apply to Summary & Title ONLY)**:
+   The professional title and executive summary should reflect this direction:
+   {direction}
+
+   - Use this ONLY to craft the summary and title tone/focus
+   - Do NOT change the selection or reordering of experience bullets
+   - Do NOT modify skills based on this direction
+   - Keep experience bullets honest and JD-aligned, not direction-aligned
+   - The direction refines the narrative voice, not the substance of what you did"""
+
+    base_prompt += """
 
 ## OUTPUT FORMAT (JSON ONLY - no markdown, no explanation):
 
@@ -107,10 +130,16 @@ REWRITE_PROMPT = """You are a professional resume writer. Your task is to make t
   "title": "string (role title - keep honest)",
   "summary": "string (3-4 sentences, true highlights that match JD)",
   "experience": [
-    {{"company": "string", "role": "string", "period": "string", "bullets": ["bullet1 (original fact, JD-relevant language)", "bullet2", ...]}}
+    {{"company": "string (MUST match original)", "role": "string (MUST match original)", "period": "string (EXACT copy)", "bullets": ["bullet1 (rephrase original, don't invent)", "bullet2", ...]}}
   ],
-  "skills": ["skill1 (you actually have)", "skill2", "skill3"]
+  "skills": ["skill1 (from resume)", "skill2 (from resume)", "skill3 (from resume)"]
 }}
+
+## EXACT COMPANIES & ROLES YOU MUST PRESERVE:
+
+{experiences_list}
+
+You MUST use these exact companies and roles. Do NOT create new companies or roles.
 
 ## CONTEXT:
 
@@ -122,7 +151,30 @@ RESUME DATA:
 
 ---
 
-Now adapt the resume to the target role while keeping all facts and achievements exactly as they are. Change only the framing and language. JSON only."""
+FINAL CHECKLIST BEFORE RETURNING JSON:
+- Did I use the EXACT same companies from the original resume?
+- Did I use the EXACT same job roles from the original resume?
+- Did I keep all time periods exactly the same?
+- Did I only rephrase bullets, not add new ones?
+- Are all metrics and numbers identical to the original?
+- Did I extract skills ONLY from the experience listed?
+
+Return ONLY valid JSON. No explanations. No markdown."""
+
+    # 원본 경험 리스트 포맷팅
+    experiences_list = ""
+    if original_experiences:
+        experiences_list = "Companies and Roles to preserve:\n"
+        for i, exp in enumerate(original_experiences, 1):
+            company = exp.get("company", "")
+            role = exp.get("role", "")
+            period = exp.get("period", "")
+            experiences_list += f"{i}. {role} | {company} ({period})\n"
+    else:
+        experiences_list = "No experience list provided (use resume data as reference)"
+
+    # .replace()를 사용해서 placeholder 치환 (format()은 중괄호 충돌 위험)
+    return base_prompt.replace("{experiences_list}", experiences_list).replace("{jd}", jd).replace("{resume}", resume)
 
 # ── HTML template for PDF ────────────────────────────────────────────
 
@@ -330,13 +382,22 @@ def validate_resume(data: dict) -> dict:
 
 
 
-def rewrite_for_jd(raw_text: str, structured: dict, jd: str) -> dict:
-    """JD에 맞게 이력서 재작성 → JSON 반환"""
+def rewrite_for_jd(raw_text: str, structured: dict, jd: str, direction: str | None = None) -> dict:
+    """JD에 맞게 이력서 재작성 → JSON 반환 (방향성 선택적 포함)"""
+    # 원본 경험 리스트 추출 (회사/직무 보존용)
+    original_experiences = []
+    for exp in structured.get("experience", []):
+        original_experiences.append({
+            "company": exp.get("company", ""),
+            "role": exp.get("role") or exp.get("title", ""),
+            "period": exp.get("period", "")
+        })
+
     resume_str = json.dumps(structured, ensure_ascii=False)
     if raw_text:
         resume_str += "\n\n[Original text for reference]\n" + raw_text
 
-    prompt = REWRITE_PROMPT.replace("{resume}", resume_str).replace("{jd}", jd)
+    prompt = get_rewrite_prompt(jd, resume_str, direction, original_experiences)
 
     response = call_deepseek(prompt)
     log.info("[4] DeepSeek rewrite done")
@@ -496,7 +557,7 @@ def generate():
     """
     샘플 선택 → JD 입력 → 이력서 재작성 → PDF 생성
 
-    Request: { "sample": "igaming_am", "jd_text": "..." }
+    Request: { "sample": "igaming_am", "jd_text": "...", "direction": "..." (선택사항) }
     """
     if request.method == "OPTIONS":
         return jsonify({"ok": True})
@@ -504,6 +565,7 @@ def generate():
     body = request.json or {}
     sample_name = body.get("sample", "").strip()
     jd = body.get("jd_text", "").strip()
+    direction = (body.get("direction") or "").strip()
 
     # [1] 샘플 이력서 로드
     if not sample_name:
@@ -541,9 +603,9 @@ def generate():
     company = extract_company_name(jd)
     save_jd_log(jd, company)
 
-    # [4] Claude API로 sample + JD → 재작성
+    # [4] Claude API로 sample + JD → 재작성 (방향성 선택적 포함)
     try:
-        rewritten = rewrite_for_jd("", sample, jd)
+        rewritten = rewrite_for_jd("", sample, jd, direction if direction else None)
     except httpx.HTTPStatusError as exc:
         log.error("[4] DeepSeek HTTP error", exc_info=exc)
         return (
