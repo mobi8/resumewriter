@@ -72,22 +72,26 @@ def get_rewrite_prompt(jd: str, resume: str, direction: str | None = None, origi
     base_prompt = """You are a professional resume writer. Your task is to make the provided resume more relevant to the target job while maintaining honesty and authenticity.
 
 ## CORE PRINCIPLE:
-**Preserve the actual experience and achievements. Only reframe language and emphasis to highlight genuine relevance to the target role.**
+**Keep your actual experience intact. Reframe and rewrite to emphasize the aspects most relevant to the target JD. Make your genuine work more compelling by highlighting its connection to what they're looking for.**
 
 ## CRITICAL RULES - DO NOT VIOLATE:
 
-1. **PRESERVE EXISTING STRUCTURE**:
-   - Use EXACTLY the same companies and roles that appear in the resume
-   - Do NOT create new companies or job titles that don't exist in the original
-   - Do NOT remove any existing roles
-   - Keep the same time periods exactly as provided
+1. **PRESERVE EXISTING STRUCTURE (Framework, not Content)**:
+   - Use the same companies and roles from the resume
+   - Do NOT create new companies or fabricate job titles
+   - Do NOT remove or omit major experiences
+   - Keep time periods exactly as provided
+   - Within this structure, feel free to rewrite bullets creatively to match the JD context
 
-2. **Bullet Point Reframing Only**:
-   - You may reorder existing bullets to show most relevant first
-   - You may rephrase bullets using JD terminology
-   - You CANNOT add new bullets that describe work not mentioned in original
-   - You CANNOT remove bullets from existing experiences
-   - Keep metrics, numbers, and quantifiable achievements exactly the same
+2. **Bullet Point Reframing & Rewriting**:
+   - Reorder bullets to prioritize those most relevant to the JD
+   - You MAY rewrite bullets to emphasize the aspects most relevant to the JD
+   - You MAY combine, split, or restructure bullets to highlight JD-relevant impact
+   - The CORE FACTS of what you did must stay the same (metrics, timelines, outcomes)
+   - Do NOT invent new responsibilities or achievements not found in the original
+   - Do NOT remove or omit any major work experiences
+   - Use JD terminology and context to make your actual work more compelling and relevant
+   - Example: If original says "managed payment systems" and JD emphasizes "operational excellence", rewrite as "optimized payment operations to achieve 99.9% uptime and reduce processing time by X%"
 
 3. **Skills**:
    - Extract ONLY skills that already exist in the resume
@@ -95,18 +99,22 @@ def get_rewrite_prompt(jd: str, resume: str, direction: str | None = None, origi
    - Do NOT invent new skills
    - Do NOT list skills not found in experience bullets or original resume
 
-4. **Title & Summary**:
-   - Title: adjust only if the new title genuinely reflects your actual role
-   - Summary: highlight real overlaps between your actual experience and the JD
-   - Do NOT claim expertise you don't have
-   - Keep summary grounded in your actual background
+4. **Title & Summary - Make Them Compelling**:
+   - Title: adjust to align with JD if it genuinely reflects your actual position
+   - Summary: Be strategic. Highlight the aspects of your real background that match the JD
+   - Lead with the most relevant context for this specific opportunity
+   - Do NOT claim skills you don't genuinely have
+   - Do emphasize the genuine overlaps between what you've done and what they need
+   - Make your actual experience sound as compelling and relevant as possible
 
 5. **What NOT to Do** (ABSOLUTE):
-   - ❌ Create entirely new companies (e.g., "Game Development Manager | Netmarble" if not in original)
-   - ❌ Invent job responsibilities that aren't mentioned in the resume
-   - ❌ Change the fundamental narrative of your roles
-   - ❌ Add metrics or achievements that weren't there
-   - ❌ Remove real experience to make room for fake ones"""
+   - ❌ Create entirely new companies or roles that don't exist in the original
+   - ❌ Fabricate responsibilities or achievements not grounded in the original resume
+   - ❌ Change the timeline or remove major work experiences
+   - ❌ Invent metrics or numbers that weren't in the original
+   - ❌ Claim expertise in areas not evident from the resume
+   - ✅ DO reframe existing work through the lens of JD requirements
+   - ✅ DO emphasize aspects of your actual work that match the JD"""
 
     if direction:
         base_prompt += f"""
@@ -152,14 +160,18 @@ RESUME DATA:
 ---
 
 FINAL CHECKLIST BEFORE RETURNING JSON:
-- Did I use the EXACT same companies from the original resume?
-- Did I use the EXACT same job roles from the original resume?
+- Did I preserve the exact same companies and roles?
 - Did I keep all time periods exactly the same?
-- Did I only rephrase bullets, not add new ones?
-- Are all metrics and numbers identical to the original?
-- Did I extract skills ONLY from the experience listed?
+- Did I keep core metrics and numbers from the original?
+- Are bullets grounded in actual work (not fabricated)?
+- Did I reframe/rewrite to match JD context without inventing achievements?
+- Did I prioritize JD-relevant aspects of real work?
+- Are skills extracted from experience bullets?
+- Would someone reading both the original and rewritten version recognize them as the same person's actual experiences?
 
-Return ONLY valid JSON. No explanations. No markdown."""
+Return ONLY valid JSON. No explanations. No markdown.
+
+REMEMBER: Your goal is to make this person's genuine experience SHINE for this specific opportunity. Don't just swap words - reframe what they've actually done so the JD reader immediately sees the relevance."""
 
     # 원본 경험 리스트 포맷팅
     experiences_list = ""
@@ -377,6 +389,9 @@ def validate_resume(data: dict) -> dict:
             if isinstance(exp, dict)
         ],
         "skills": [sanitize(s) for s in (data.get("skills") or []) if isinstance(s, str)],
+        "contact": data.get("contact", {}),
+        "location": sanitize(data.get("location")),
+        "availability": sanitize(data.get("availability")),
     }
 
 
