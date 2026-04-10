@@ -333,36 +333,25 @@
 
     function printResume() {
       try {
-        const doc = resumeFrame.contentDocument;
-        if (!doc) {
+        const iframeWindow = resumeFrame.contentWindow;
+        if (!iframeWindow) {
           alert('이력서가 아직 로드되지 않았습니다.');
           return;
         }
 
         // 편집 모드 정리
-        if (isEditingMode) {
+        const doc = iframeWindow.document;
+        if (doc && doc.body) {
           doc.body.contentEditable = 'false';
           doc.body.style.outline = 'none';
           doc.body.style.background = 'white';
         }
 
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-          alert('팝업 차단 설정으로 인해 인쇄창을 열 수 없습니다. 팝업 차단을 해제해주세요.');
-          return;
-        }
-
-        const htmlContent = doc.documentElement.outerHTML;
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-
-        // 문서 로드 후 인쇄
-        setTimeout(() => {
-          printWindow.print();
-        }, 250);
+        iframeWindow.focus();
+        iframeWindow.print();
       } catch (e) {
-        console.error('인쇄 오류:', e);
-        alert('인쇄 중 오류가 발생했습니다.');
+        console.error('저장/인쇄 오류:', e);
+        alert('PDF 저장 중 오류가 발생했습니다.');
       }
     }
 

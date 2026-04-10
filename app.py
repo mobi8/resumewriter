@@ -120,10 +120,11 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <style>
   @page {{ size: A4; margin: 0; padding: 0; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 20px 18px; padding: 0; }}
+  html {{ height: 100%; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 0; padding: 20px 18px; min-height: 1123px; display: flex; flex-direction: column; }}
 
   @media print {{
-    body {{ margin: 20mm 18mm; }}
+    body {{ margin: 20mm 18mm 30mm 18mm; }}
     * {{ outline: none !important; }}
   }}
 
@@ -136,7 +137,7 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
   .contact-row a {{ color: #1c6ce4; text-decoration: none; font-weight: 500; font-size: 11pt; }}
   .contact-row span {{ font-size: 10pt; color: #282828; }}
   .summary-block {{ margin-top: 12px; margin-bottom: 16px; color: #343434; font-size: 11pt; line-height: 1.6; width: 100%; }}
-  .summary-block .position-title {{ margin: 0 0 8px; font-size: 15pt; font-weight: 600; color: #2c2c2c; }}
+  .summary-block .position-title {{ margin: 0 0 8px; font-size: 15pt; font-weight: 600; color: #0066cc }}
   .summary-text {{ margin: 0; }}
 
   h2 {{ font-size: 11pt; font-weight: 600; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 14px 0 8px; letter-spacing: 0.5px; }}
@@ -151,7 +152,7 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
   ul {{ padding-left: 18px; margin: 4px 0 0 0; }}
   li {{ margin-bottom: 3px; font-size: 10pt; color: #444; }}
 
-  .skills {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }}
+  .skills {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; margin-bottom: 40px; flex-grow: 1; }}
   .skill-tag {{ background: #f5f5f5; padding: 4px 10px; border-radius: 3px; font-size: 9.5pt; color: #555; border: 1px solid #e0e0e0; }}
 </style>
 </head>
