@@ -3,23 +3,14 @@ import logging
 import re
 import time
 from datetime import datetime
-from io import BytesIO
 from pathlib import Path
 
 import httpx
 import pdfplumber
 from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
+from fpdf import FPDF
 from flask import Flask, request, render_template, send_file, jsonify
 from werkzeug.exceptions import RequestEntityTooLarge
-
-try:
-    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-    PLAYWRIGHT_AVAILABLE = True
-except ImportError:
-    sync_playwright = None
-    class PlaywrightTimeoutError(Exception):
-        pass
-    PLAYWRIGHT_AVAILABLE = False
 
 # ── logging ──────────────────────────────────────────────────────────
 
@@ -29,9 +20,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("resume")
-
-if not PLAYWRIGHT_AVAILABLE:
-    log.warning("Playwright가 설치되지 않았습니다.")
 
 # ── app setup ────────────────────────────────────────────────────────
 
@@ -67,87 +55,50 @@ RESUME_SCHEMA = {
 
 # ── fixed prompt templates ───────────────────────────────────────────
 
-def get_rewrite_prompt(jd: str, resume: str, direction: str | None = None, original_experiences: list | None = None) -> str:
-    """동적으로 프롬프트 생성 (방향성 포함 여부에 따라)"""
-    base_prompt = """You are a professional resume writer. Your task is to make the provided resume more relevant to the target job while maintaining honesty and authenticity.
+REWRITE_PROMPT = """You are a professional resume writer. Your task is to make the provided resume more relevant to the target job while maintaining honesty and authenticity.
 
 ## CORE PRINCIPLE:
-**Keep your actual experience intact. Reframe and rewrite to emphasize the aspects most relevant to the target JD. Make your genuine work more compelling by highlighting its connection to what they're looking for.**
+**Preserve the actual experience and achievements. Only reframe language and emphasis to highlight genuine relevance to the target role.**
 
-## CRITICAL RULES - DO NOT VIOLATE:
+## INSTRUCTIONS:
 
-1. **PRESERVE EXISTING STRUCTURE (Framework, not Content)**:
-   - Use the same companies and roles from the resume
-   - Do NOT create new companies or fabricate job titles
-   - Do NOT remove or omit major experiences
-   - Keep time periods exactly as provided
-   - Within this structure, feel free to rewrite bullets creatively to match the JD context
+1. **Keep All Facts & Numbers**:
+   - Every achievement, metric, and timeline MUST stay exactly as provided
+   - Do NOT add or modify quantifiable results
+   - Do NOT exaggerate responsibilities or scope
 
-2. **Bullet Point Reframing & Rewriting**:
-   - Reorder bullets to prioritize those most relevant to the JD
-   - You MAY rewrite bullets to emphasize the aspects most relevant to the JD
-   - You MAY combine, split, or restructure bullets to highlight JD-relevant impact
-   - The CORE FACTS of what you did must stay the same (metrics, timelines, outcomes)
-   - Do NOT invent new responsibilities or achievements not found in the original
-   - Do NOT remove or omit any major work experiences
-   - Use JD terminology and context to make your actual work more compelling and relevant
-   - Example: If original says "managed payment systems" and JD emphasizes "operational excellence", rewrite as "optimized payment operations to achieve 99.9% uptime and reduce processing time by X%"
+2. **Smart Reframing (Language Only)**:
+   - Use terminology from the JD that matches your actual experience (e.g., if you managed "customer relations" and JD says "stakeholder management", use their term)
+   - Reorder bullets to show most relevant work first
+   - Keep original context - don't distort what you actually did
 
-3. **Skills**:
-   - Extract ONLY skills that already exist in the resume
-   - Prioritize skills mentioned in the JD that you genuinely have
-   - Do NOT invent new skills
-   - Do NOT list skills not found in experience bullets or original resume
+3. **Title Strategy**:
+   - Adjust title to align with target role IF it reflects your actual position
+   - If current title is "Account Manager" and JD seeks "Product Manager", only change if you genuinely did product work
+   - Keep it honest over perfect match
 
-4. **Title & Summary - Rewrite for Maximum Impact**:
-   - Title: Rewrite it completely to match the JD and opportunity. Be strategic and compelling.
-   - Summary: Rewrite from scratch to position this person optimally for the JD
-   - Lead with what matters most to this specific role
-   - Emphasize the genuine overlaps between actual experience and what they need
-   - Make your background sound as relevant and compelling as possible
-   - Constraint: Stay grounded in your actual experience (no false claims), but feel free to present it in the best light for this opportunity
+4. **Skills & Summary**:
+   - Extract skills you actually have that appear in the JD
+   - Write summary highlighting genuine overlaps
+   - Do NOT add skills you don't have
 
-5. **What NOT to Do** (ABSOLUTE):
-   - ❌ Create entirely new companies or roles that don't exist in the original
-   - ❌ Fabricate responsibilities or achievements not grounded in the original resume
-   - ❌ Change the timeline or remove major work experiences
-   - ❌ Invent metrics or numbers that weren't in the original
-   - ❌ Claim expertise in areas not evident from the resume
-   - ✅ DO reframe existing work through the lens of JD requirements
-   - ✅ DO emphasize aspects of your actual work that match the JD"""
-
-    if direction:
-        base_prompt += f"""
-
-6. **STRATEGIC DIRECTION (Apply to Summary & Title ONLY)**:
-   The professional title and executive summary should reflect this direction:
-   {direction}
-
-   - Use this ONLY to craft the summary and title tone/focus
-   - Do NOT change the selection or reordering of experience bullets
-   - Do NOT modify skills based on this direction
-   - Keep experience bullets honest and JD-aligned, not direction-aligned
-   - The direction refines the narrative voice, not the substance of what you did"""
-
-    base_prompt += """
+5. **What NOT to Do**:
+   - ❌ Rewrite experience bullets to claim things you didn't do
+   - ❌ Add metrics or achievements that weren't in original
+   - ❌ Expand scope of past roles beyond what actually happened
+   - ❌ Change the narrative of what your role was
 
 ## OUTPUT FORMAT (JSON ONLY - no markdown, no explanation):
 
 {{
   "name": "string",
-  "title": "string (REWRITE to match JD - be strategic!)",
-  "summary": "string (REWRITE from scratch - 3-4 sentences optimized for the JD)",
+  "title": "string (role title - keep honest)",
+  "summary": "string (3-4 sentences, true highlights that match JD)",
   "experience": [
-    {{"company": "string (MUST match original)", "role": "string (MUST match original)", "period": "string (EXACT copy)", "bullets": ["bullet1 (reframe original work, don't fabricate)", "bullet2", ...]}}
+    {{"company": "string", "role": "string", "period": "string", "bullets": ["bullet1 (original fact, JD-relevant language)", "bullet2", ...]}}
   ],
-  "skills": ["skill1 (from resume)", "skill2 (from resume)", "skill3 (from resume)"]
+  "skills": ["skill1 (you actually have)", "skill2", "skill3"]
 }}
-
-## EXACT COMPANIES & ROLES YOU MUST PRESERVE:
-
-{experiences_list}
-
-You MUST use these exact companies and roles. Do NOT create new companies or roles.
 
 ## CONTEXT:
 
@@ -157,34 +108,14 @@ TARGET JOB:
 RESUME DATA:
 {resume}
 
+JD KEYWORDS TO ECHO (examples extracted from responsibilities/requirements; use whichever actually match the facts):
+["wallet operations", "exchange wallet uptime", "deposits", "withdrawals", "transaction monitoring", "risk mitigation", "compliance controls", "network upgrades", "process optimization", "cross-functional collaboration", "internal alerts", "stakeholder management", "business growth", "wallet custody", "on-chain analysis"]
+
+For each role, before the detailed responsibilities, add 2-3 "Key Outcomes" bullets that read like hooks: tie your existing metrics/achievements to JD themes (uptime, incident response, wallet infrastructure stability, partner enablement, growth). Keep tone confident, concise, and technical, emphasizing 24/7 reliability, compliance discipline, and outcome-driven language consistent with a Head of Wallet leader.
+
 ---
 
-FINAL CHECKLIST BEFORE RETURNING JSON:
-- Did I preserve the exact same companies, roles, and time periods?
-- Did I rewrite the title and summary from scratch to match the JD?
-- Are experience bullets grounded in actual work (reframed, not fabricated)?
-- Did I keep core metrics and numbers from the original?
-- Are skills extracted from actual experience?
-- Would the core resume facts (companies, roles, dates, achievements) match the original even though the presentation is different?
-
-Return ONLY valid JSON. No explanations. No markdown.
-
-REMEMBER: Your goal is to make this person's genuine experience SHINE for this specific opportunity. Don't just swap words - reframe what they've actually done so the JD reader immediately sees the relevance."""
-
-    # 원본 경험 리스트 포맷팅
-    experiences_list = ""
-    if original_experiences:
-        experiences_list = "Companies and Roles to preserve:\n"
-        for i, exp in enumerate(original_experiences, 1):
-            company = exp.get("company", "")
-            role = exp.get("role", "")
-            period = exp.get("period", "")
-            experiences_list += f"{i}. {role} | {company} ({period})\n"
-    else:
-        experiences_list = "No experience list provided (use resume data as reference)"
-
-    # .replace()를 사용해서 placeholder 치환 (format()은 중괄호 충돌 위험)
-    return base_prompt.replace("{experiences_list}", experiences_list).replace("{jd}", jd).replace("{resume}", resume)
+Now adapt the resume to the target role while keeping all facts and achievements exactly as they are. Change only the framing and language. JSON only."""
 
 # ── HTML template for PDF ────────────────────────────────────────────
 
@@ -192,31 +123,29 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-  <style>
-    @page {{ size: A4; margin: 20mm 18mm 20mm 18mm; }}
-    html {{ height: 100%; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 0; padding: 20mm 18mm; min-height: 1123px; display: flex; flex-direction: column; width: 100%; box-sizing: border-box; background: #fff; }}
+<style>
+  @page {{ size: A4; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 20px 18px; padding: 0; }}
 
-    @media print {{
-      body {{ margin: 0; padding: 0; }}
-      * {{ outline: none !important; }}
-    }}
+  @media print {{
+    body {{ margin: 20mm 18mm; }}
+    * {{ outline: none !important; }}
+  }}
 
-    .resume-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 4px; padding-bottom: 12px; border-bottom: 1px solid #d8d8d8; }}
-    .header-left {{ flex: 1; }}
-    .header-left h1 {{ font-size: 32pt; margin: 0; color: #111; line-height: 1.1; }}
-    .location-availability {{ font-size: 10pt; color: #6a6a6a; line-height: 1.4; margin: 4px 0 0; }}
-    .header-right {{ width: 220px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; color: #444; }}
-    .contact-row {{ text-align: right; font-size: 10pt; }}
-    .contact-link {{ color: #1c6ce4; text-decoration: none; font-weight: 600; font-size: 11pt; letter-spacing: 0.05em; }}
-    .contact-link:hover {{ text-decoration: underline; }}
-    .contact-detail {{ font-size: 10pt; color: #222; }}
-    .summary-block {{ margin-top: 12px; margin-bottom: 16px; color: #343434; font-size: 11pt; line-height: 1.6; width: 100%; max-width: none; display: flex; flex-direction: column; gap: 6px; }}
-    .summary-block .position-title {{ margin: 0 0 8px; font-size: 15pt; font-weight: 600; color: #0066cc }}
-    .summary-text {{ margin: 0; max-width: none; }}
+  .resume-header {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 10px; padding-bottom: 12px; border-bottom: 1px solid #d8d8d8; }}
+  .header-left {{ flex: 1; }}
+  .header-left h1 {{ font-size: 30pt; margin: 0 0 4px; color: #111; line-height: 1.1; }}
+  .location-availability {{ font-size: 10pt; color: #6a6a6a; line-height: 1.4; margin-bottom: 2px; }}
+  .header-right {{ width: 200px; text-align: right; font-size: 10pt; color: #444; line-height: 1.4; }}
+  .contact-row {{ margin-bottom: 8px; }}
+  .contact-row a {{ color: #1c6ce4; text-decoration: none; font-weight: 500; font-size: 11pt; }}
+  .contact-row span {{ font-size: 10pt; color: #282828; }}
+  .summary-block {{ margin-top: 12px; margin-bottom: 16px; color: #343434; font-size: 11pt; line-height: 1.6; width: 100%; }}
+  .summary-block .position-title {{ margin: 0 0 8px; font-size: 15pt; font-weight: 600; color: #0066cc }}
+  .summary-text {{ margin: 0; }}
 
   h2 {{ font-size: 11pt; font-weight: 600; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 14px 0 8px; letter-spacing: 0.5px; }}
-
+ㅁ4 
   .exp-item {{ margin-bottom: 10px; }}
   .exp-header {{ display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }}
   .exp-title {{ font-weight: 600; font-size: 10.5pt; color: #0066cc; }}
@@ -227,7 +156,7 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
   ul {{ padding-left: 18px; margin: 4px 0 0 0; }}
   li {{ margin-bottom: 3px; font-size: 10pt; color: #444; }}
 
-  .skills {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; margin-bottom: 40px; flex-grow: 1; }}
+  .skills {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }}
   .skill-tag {{ background: #f5f5f5; padding: 4px 10px; border-radius: 3px; font-size: 9.5pt; color: #555; border: 1px solid #e0e0e0; }}
 </style>
 </head>
@@ -387,30 +316,18 @@ def validate_resume(data: dict) -> dict:
             if isinstance(exp, dict)
         ],
         "skills": [sanitize(s) for s in (data.get("skills") or []) if isinstance(s, str)],
-        "contact": data.get("contact", {}),
-        "location": sanitize(data.get("location")),
-        "availability": sanitize(data.get("availability")),
     }
 
 
 
 
-def rewrite_for_jd(raw_text: str, structured: dict, jd: str, direction: str | None = None) -> dict:
-    """JD에 맞게 이력서 재작성 → JSON 반환 (방향성 선택적 포함)"""
-    # 원본 경험 리스트 추출 (회사/직무 보존용)
-    original_experiences = []
-    for exp in structured.get("experience", []):
-        original_experiences.append({
-            "company": exp.get("company", ""),
-            "role": exp.get("role") or exp.get("title", ""),
-            "period": exp.get("period", "")
-        })
-
+def rewrite_for_jd(raw_text: str, structured: dict, jd: str) -> dict:
+    """JD에 맞게 이력서 재작성 → JSON 반환"""
     resume_str = json.dumps(structured, ensure_ascii=False)
     if raw_text:
         resume_str += "\n\n[Original text for reference]\n" + raw_text
 
-    prompt = get_rewrite_prompt(jd, resume_str, direction, original_experiences)
+    prompt = REWRITE_PROMPT.replace("{resume}", resume_str).replace("{jd}", jd)
 
     response = call_deepseek(prompt)
     log.info("[4] DeepSeek rewrite done")
@@ -430,32 +347,29 @@ def json_to_html(data: dict) -> str:
     contact = data.get("contact", {}) or {}
     if isinstance(contact, dict):
         rows = []
-        linkedin_val = contact.get("linkedin", "").strip()
-        phone_val = contact.get("phone", "").strip()
-        email_val = contact.get("email", "").strip()
-
-        if linkedin_val:
+        if contact.get("linkedin"):
+            linkedin_val = contact["linkedin"]
             if linkedin_val.startswith("http"):
                 linkedin_url = linkedin_val
             else:
                 linkedin_url = f"https://linkedin.com/in/{linkedin_val}"
             rows.append(
                 '<div class="contact-row">'
-                f'<a class="contact-link" href="{linkedin_url}" target="_blank" rel="noreferrer">linkedin</a>'
+                f'<a href="{linkedin_url}" target="_blank" rel="noreferrer">Linkedin</a>'
                 "</div>"
             )
 
-        if phone_val:
+        if contact.get("phone"):
             rows.append(
                 '<div class="contact-row">'
-                f'<span class="contact-detail">{phone_val}</span>'
+                f'<span>{contact["phone"]}</span>'
                 "</div>"
             )
 
-        if email_val:
+        if contact.get("email"):
             rows.append(
                 '<div class="contact-row">'
-                f'<span class="contact-detail">{email_val}</span>'
+                f'<span>{contact["email"]}</span>'
                 "</div>"
             )
 
@@ -554,8 +468,6 @@ def extract_company_name(jd: str) -> str:
     return "company"
 
 
- 
- 
 # ── routes ───────────────────────────────────────────────────────────
 
 
@@ -570,7 +482,7 @@ def generate():
     """
     샘플 선택 → JD 입력 → 이력서 재작성 → PDF 생성
 
-    Request: { "sample": "igaming_am", "jd_text": "...", "direction": "..." (선택사항) }
+    Request: { "sample": "igaming_am", "jd_text": "..." }
     """
     if request.method == "OPTIONS":
         return jsonify({"ok": True})
@@ -578,7 +490,6 @@ def generate():
     body = request.json or {}
     sample_name = body.get("sample", "").strip()
     jd = body.get("jd_text", "").strip()
-    direction = (body.get("direction") or "").strip()
 
     # [1] 샘플 이력서 로드
     if not sample_name:
@@ -616,9 +527,9 @@ def generate():
     company = extract_company_name(jd)
     save_jd_log(jd, company)
 
-    # [4] Claude API로 sample + JD → 재작성 (방향성 선택적 포함)
+    # [4] Claude API로 sample + JD → 재작성
     try:
-        rewritten = rewrite_for_jd("", sample, jd, direction if direction else None)
+        rewritten = rewrite_for_jd("", sample, jd)
     except httpx.HTTPStatusError as exc:
         log.error("[4] DeepSeek HTTP error", exc_info=exc)
         return (
@@ -674,52 +585,6 @@ def generate():
         "pdf_path": f"{filename}.pdf",
         "sample": sample_name,
     })
-
-
-@app.route("/download-pdf", methods=["POST"])
-def download_pdf():
-    """HTML → PDF 변환 후 다운로드"""
-    body = request.json or {}
-    html_content = body.get("html", "").strip()
-    filename = body.get("filename", "resume").strip()
-
-    if not html_content:
-        return jsonify({"error": "HTML content required"}), 400
-
-    if not PLAYWRIGHT_AVAILABLE:
-        message = "Playwright가 설치되지 않았습니다. pip install playwright && playwright install chromium 명령을 실행하세요."
-        log.error(message)
-        return jsonify({"error": message}), 503
-
-    margins = {"top": "20mm", "right": "18mm", "bottom": "20mm", "left": "18mm"}
-
-    try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch()
-            try:
-                page = browser.new_page()
-                page.set_content(html_content, wait_until="networkidle")
-                pdf_bytes = page.pdf(
-                    format="A4",
-                    margin=margins,
-                    print_background=True,
-                    prefer_css_page_size=True,
-                )
-            finally:
-                browser.close()
-
-        return send_file(
-            BytesIO(pdf_bytes),
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name=f"{filename}.pdf"
-        )
-    except PlaywrightTimeoutError as exc:
-        log.error("Playwright timeout while rendering PDF", exc_info=exc)
-        return jsonify({"error": "PDF 렌더링이 제한 시간을 초과했습니다."}), 504
-    except Exception as e:
-        log.error(f"PDF conversion failed: {e}", exc_info=e)
-        return jsonify({"error": f"PDF 변환 중 오류가 발생했습니다: {str(e)}"}), 500
 
 
 @app.route("/view/<filename>")
