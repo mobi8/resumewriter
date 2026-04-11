@@ -192,7 +192,7 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 <style>
   @page {{ size: A4; margin: 8mm; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.62; margin: 0; padding: 0; background: #fff; }}
-  .content-shell {{ margin: 5mm 5mm; }}
+  .content-shell {{ margin: 0; padding: 0; }}
 
   @media print {{
     body {{ margin: 20mm 18mm; }}
