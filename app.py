@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -115,14 +116,68 @@ TARGET JOB:
 RESUME DATA:
 {resume}
 
-JD KEYWORDS TO ECHO (examples extracted from responsibilities/requirements; use whichever actually match the facts):
-["wallet operations", "exchange wallet uptime", "deposits", "withdrawals", "transaction monitoring", "risk mitigation", "compliance controls", "network upgrades", "process optimization", "cross-functional collaboration", "internal alerts", "stakeholder management", "business growth", "wallet custody", "on-chain analysis"]
+JD KEYWORDS TO ECHO (auto-extracted from the JD; only reuse ones that truly match your facts):
+{jd_keywords}
 
-For each role, before the detailed responsibilities, add 2-3 "Key Outcomes" bullets that read like hooks: tie your existing metrics/achievements to JD themes (uptime, incident response, wallet infrastructure stability, partner enablement, growth). Keep tone confident, concise, and technical, emphasizing 24/7 reliability, compliance discipline, and outcome-driven language consistent with a Head of Wallet leader.
+For each role, before the detailed responsibilities, add 2–3 "Key Outcomes" bullets that read like hooks: tie your existing metrics/achievements to JD themes (uptime, incident response, wallet infrastructure stability, partner enablement, growth). Keep tone confident, concise, and technical, emphasizing 24/7 reliability, compliance discipline, and outcome-driven language consistent with a Head of Wallet leader.
 
 ---
 
 Now adapt the resume to the target role while keeping all facts and achievements exactly as they are. Change only the framing and language. JSON only."""
+
+JD_STOPWORDS = {
+    "and", "or", "the", "a", "an", "to", "with", "for", "of", "in", "across", "between",
+    "into", "with", "ensure", "ensure", "ensure", "by", "from", "that", "this", "these",
+    "those", "per", "as", "at", "on", "per", "while", "into", "through", "via", "within",
+    "our", "its", "any", "other", "each", "every", "all", "own", "team", "teams", "lead",
+    "leading", "leading-edge", "leading", "global", "industry", "world", "large", "improve",
+    "build", "provide", "deliver", "drive", "driving", "operational", "operating", "operationally",
+}
+
+
+def extract_jd_keywords(jd_text: str, max_keywords: int = 12) -> list[str]:
+    """단순 noun-phrase/keyword 추출하여 prompt에 넣을 리스트 식별"""
+    cleaned = re.sub(r"<[^>]+>", " ", jd_text)
+    phrases = Counter()
+    for raw_line in cleaned.splitlines():
+        line = raw_line.strip()
+        if not line or len(line.split()) < 2:
+            continue
+        words = [
+            token.lower()
+            for token in re.findall(r"[A-Za-z0-9]+", line)
+            if len(token) > 1
+        ]
+        words = [word for word in words if word not in JD_STOPWORDS]
+        if not words:
+            continue
+        for n in (3, 2):
+            for i in range(len(words) - n + 1):
+                phrase = " ".join(words[i : i + n])
+                phrases[phrase] += 1
+        for word in words:
+            phrases[word] += 1
+    if not phrases:
+        return []
+    sorted_phrases = sorted(
+        phrases.items(),
+        key=lambda item: (len(item[0].split()), item[1]),
+        reverse=True,
+    )
+    keywords = []
+    for phrase, _count in sorted_phrases:
+        if phrase in keywords:
+            continue
+        keywords.append(phrase)
+        if len(keywords) >= max_keywords:
+            break
+    return keywords
+
+
+def format_keywords_for_prompt(keywords: list[str]) -> str:
+    if not keywords:
+        return "[]"
+    return "[" + ", ".join(f'"{keyword}"' for keyword in keywords) + "]"
 
 # ── HTML template for PDF ────────────────────────────────────────────
 
@@ -334,13 +389,17 @@ def validate_resume(data: dict) -> dict:
 
 
 
-def rewrite_for_jd(raw_text: str, structured: dict, jd: str) -> dict:
+def rewrite_for_jd(raw_text: str, structured: dict, jd: str, jd_keywords: list[str]) -> dict:
     """JD에 맞게 이력서 재작성 → JSON 반환"""
     resume_str = json.dumps(structured, ensure_ascii=False)
     if raw_text:
         resume_str += "\n\n[Original text for reference]\n" + raw_text
 
-    prompt = REWRITE_PROMPT.replace("{resume}", resume_str).replace("{jd}", jd)
+    prompt = (
+        REWRITE_PROMPT.replace("{resume}", resume_str)
+        .replace("{jd}", jd)
+        .replace("{jd_keywords}", format_keywords_for_prompt(jd_keywords))
+    )
 
     response = call_deepseek(prompt)
     log.info("[4] DeepSeek rewrite done")
@@ -549,10 +608,11 @@ def generate():
     # [3] JD 저장 + 회사명 추출
     company = extract_company_name(jd)
     save_jd_log(jd, company)
+    jd_keywords = extract_jd_keywords(jd)
 
     # [4] Claude API로 sample + JD → 재작성
     try:
-        rewritten = rewrite_for_jd("", sample, jd)
+        rewritten = rewrite_for_jd("", sample, jd, jd_keywords)
     except httpx.HTTPStatusError as exc:
         log.error("[4] DeepSeek HTTP error", exc_info=exc)
         return (
