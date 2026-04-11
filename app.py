@@ -83,10 +83,17 @@ REWRITE_PROMPT = """You are a professional resume writer. Your task is to make t
    - Do NOT add skills you don't have
 
 5. **What NOT to Do**:
-   - ❌ Rewrite experience bullets to claim things you didn't do
-   - ❌ Add metrics or achievements that weren't in original
-   - ❌ Expand scope of past roles beyond what actually happened
-   - ❌ Change the narrative of what your role was
+ - ❌ Rewrite experience bullets to claim things you didn't do
+ - ❌ Add metrics or achievements that weren't in original
+ - ❌ Expand scope of past roles beyond what actually happened
+ - ❌ Change the narrative of what your role was
+
+## JD ALIGNMENT REQUIREMENTS:
+
+- **Echo JD phrasing** when it matches facts. If the JD mentions “wallet product owner”, “exchange wallet uptime”, “network upgrades”, “on-chain analytics”, “custody tooling (Hardware wallet, MPC, HSM, KSM, Embedded Custody)”, “customer support collaboration”, or “business growth strategy for CEX”, reuse those words exactly in the summary or experience bullets.
+- **Key Outcomes**: For each role, create 2–3 short lines before the responsibilities that tie a quantified fact to a JD theme (monitoring/blockchain processing, uptime, risk controls, compliance alerts, process optimization, partner enablement, business growth). Use LP-style language (problem → action → result) and keep them under 20 words each.
+- **Hook the GGPoker role** by prioritizing wallet-scale and outage-proofing language (“$20M+/month deposits & withdrawals”, “exchange wallets 24/7 monitoring”, “structured escalation for alerts”) while still keeping all facts unchanged.
+- **Tone**: Keep it confident/operational – mention “24/7 crypto environment”, “stakeholder collaboration”, “structured escalation”, “wallet governance”, “risk mitigation”, and “product-infra partnership” to match a Head of Wallet leader narrative.
 
 ## OUTPUT FORMAT (JSON ONLY - no markdown, no explanation):
 
