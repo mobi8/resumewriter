@@ -20,6 +20,9 @@ fi
 
 source venv/bin/activate
 
+# pip 버전 경고를 억제
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+
 # 의존성 설치
 pip install -q -r requirements.txt
 
