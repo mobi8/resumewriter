@@ -121,6 +121,8 @@ JD KEYWORDS TO ECHO (auto-extracted from the JD; only reuse ones that truly matc
 
 For each role, before the detailed responsibilities, add 2–3 "Key Outcomes" bullets that read like hooks: tie your existing metrics/achievements to JD themes (uptime, incident response, wallet infrastructure stability, partner enablement, growth). Keep tone confident, concise, and technical, emphasizing 24/7 reliability, compliance discipline, and outcome-driven language consistent with a Head of Wallet leader.
 
+- **Role title alignment**: Deduce the closest role label from the JD (e.g., “Head of Wallet”, “Wallet Product Owner”, “Wallet Operations Lead”) and use it as the summary title/first sentence. If the existing sample title is narrower (“Lead Crypto Payments…”), wrap it as supporting text (“Head of Wallet Operations leader with prior Lead Crypto Payments & B2B Operations experience”). Do not invent new employers—keep the experience company names accurate, but let the top title speak directly to the JD role.
+
 ---
 
 Now adapt the resume to the target role while keeping all facts and achievements exactly as they are. Change only the framing and language. JSON only."""
