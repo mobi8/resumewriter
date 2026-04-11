@@ -190,8 +190,9 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <style>
-  @page {{ size: A4; margin: 0; padding: 0; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 20px 18px; padding: 0; }}
+  @page {{ size: A4; margin: 18mm; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 0; padding: 0; background: #fff; }}
+  .content-shell {{ margin: 20px 18px; }}
 
   @media print {{
     body {{ margin: 20mm 18mm; }}
@@ -230,21 +231,23 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-  <div class="resume-header">
-    <div class="header-left">
-      <h1>{name}</h1>
-      {availability_html}
+  <div class="content-shell">
+    <div class="resume-header">
+      <div class="header-left">
+        <h1>{name}</h1>
+        {availability_html}
+      </div>
+      <div class="header-right">
+        {contact_html}
+      </div>
     </div>
-    <div class="header-right">
-      {contact_html}
-    </div>
+
+    {summary_block}
+
+    {experience_html}
+
+    {skills_html}
   </div>
-
-  {summary_block}
-
-  {experience_html}
-
-  {skills_html}
 </body>
 </html>"""
 #
