@@ -190,9 +190,9 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <style>
-  @page {{ size: A4; margin: 18mm; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.6; margin: 0; padding: 0; background: #fff; }}
-  .content-shell {{ margin: 20px 18px; }}
+  @page {{ size: A4; margin: 12mm; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; color: #333; font-size: 10.5pt; line-height: 1.65; margin: 0; padding: 0; background: #fff; }}
+  .content-shell {{ margin: 10mm 10mm; }}
 
   @media print {{
     body {{ margin: 20mm 18mm; }}
