@@ -1,6 +1,12 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
+# 8080 포트 사용 중인 프로세스 종료
+if lsof -ti :8080 > /dev/null 2>&1; then
+  echo "8080 포트 사용 중인 프로세스 종료 중..."
+  kill -9 $(lsof -ti :8080)
+fi
+
 # .env 파일에서 환경 변수 로드
 if [ -f .env ]; then
   export $(cat .env | grep -v '^#' | xargs)
@@ -17,6 +23,8 @@ source venv/bin/activate
 # 의존성 설치
 pip install -q -r requirements.txt
 
+# Playwright browser binaries 설치
+python3 -m playwright install chromium
 # 환경 변수 확인
 if [ -z "$OPENROUTER_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
   echo "⚠️  경고: OPENROUTER_API_KEY 또는 OPENAI_API_KEY가 설정되지 않았습니다."
