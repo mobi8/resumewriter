@@ -99,13 +99,13 @@ def get_rewrite_prompt(jd: str, resume: str, direction: str | None = None, origi
    - Do NOT invent new skills
    - Do NOT list skills not found in experience bullets or original resume
 
-4. **Title & Summary - Make Them Compelling**:
-   - Title: adjust to align with JD if it genuinely reflects your actual position
-   - Summary: Be strategic. Highlight the aspects of your real background that match the JD
-   - Lead with the most relevant context for this specific opportunity
-   - Do NOT claim skills you don't genuinely have
-   - Do emphasize the genuine overlaps between what you've done and what they need
-   - Make your actual experience sound as compelling and relevant as possible
+4. **Title & Summary - Rewrite for Maximum Impact**:
+   - Title: Rewrite it completely to match the JD and opportunity. Be strategic and compelling.
+   - Summary: Rewrite from scratch to position this person optimally for the JD
+   - Lead with what matters most to this specific role
+   - Emphasize the genuine overlaps between actual experience and what they need
+   - Make your background sound as relevant and compelling as possible
+   - Constraint: Stay grounded in your actual experience (no false claims), but feel free to present it in the best light for this opportunity
 
 5. **What NOT to Do** (ABSOLUTE):
    - ❌ Create entirely new companies or roles that don't exist in the original
@@ -135,10 +135,10 @@ def get_rewrite_prompt(jd: str, resume: str, direction: str | None = None, origi
 
 {{
   "name": "string",
-  "title": "string (role title - keep honest)",
-  "summary": "string (3-4 sentences, true highlights that match JD)",
+  "title": "string (REWRITE to match JD - be strategic!)",
+  "summary": "string (REWRITE from scratch - 3-4 sentences optimized for the JD)",
   "experience": [
-    {{"company": "string (MUST match original)", "role": "string (MUST match original)", "period": "string (EXACT copy)", "bullets": ["bullet1 (rephrase original, don't invent)", "bullet2", ...]}}
+    {{"company": "string (MUST match original)", "role": "string (MUST match original)", "period": "string (EXACT copy)", "bullets": ["bullet1 (reframe original work, don't fabricate)", "bullet2", ...]}}
   ],
   "skills": ["skill1 (from resume)", "skill2 (from resume)", "skill3 (from resume)"]
 }}
@@ -160,14 +160,12 @@ RESUME DATA:
 ---
 
 FINAL CHECKLIST BEFORE RETURNING JSON:
-- Did I preserve the exact same companies and roles?
-- Did I keep all time periods exactly the same?
+- Did I preserve the exact same companies, roles, and time periods?
+- Did I rewrite the title and summary from scratch to match the JD?
+- Are experience bullets grounded in actual work (reframed, not fabricated)?
 - Did I keep core metrics and numbers from the original?
-- Are bullets grounded in actual work (not fabricated)?
-- Did I reframe/rewrite to match JD context without inventing achievements?
-- Did I prioritize JD-relevant aspects of real work?
-- Are skills extracted from experience bullets?
-- Would someone reading both the original and rewritten version recognize them as the same person's actual experiences?
+- Are skills extracted from actual experience?
+- Would the core resume facts (companies, roles, dates, achievements) match the original even though the presentation is different?
 
 Return ONLY valid JSON. No explanations. No markdown.
 
