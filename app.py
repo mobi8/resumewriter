@@ -152,6 +152,9 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
   .exp-company {{ font-size: 10pt; color: #666; }}
   .exp-period {{ font-size: 9.5pt; color: #888; }}
   .exp-meta {{ font-size: 9pt; color: #999; margin-bottom: 3px; }}
+  .outcome-label {{ font-size: 9pt; letter-spacing: 0.5px; font-weight: 600; color: #555; margin: 8px 0 4px; }}
+  .key-outcomes {{ padding-left: 18px; margin: 0 0 6px 0; }}
+  .key-outcomes li {{ color: #444; font-weight: 500; margin-bottom: 4px; }}
 
   ul {{ padding-left: 18px; margin: 4px 0 0 0; }}
   li {{ margin-bottom: 3px; font-size: 10pt; color: #444; }}
@@ -311,6 +314,9 @@ def validate_resume(data: dict) -> dict:
                 "bullets": [
                     sanitize(b) for b in (exp.get("bullets") or exp.get("responsibilities") or exp.get("description") or [] if isinstance(exp, dict) else [])
                 ] if isinstance((exp.get("bullets") or exp.get("responsibilities") or exp.get("description")), list) else [],
+                "key_outcomes": [
+                    sanitize(k) for k in (exp.get("key_outcomes") or [])
+                ] if isinstance(exp, dict) and isinstance(exp.get("key_outcomes"), list) else [],
             }
             for exp in (data.get("experience") or [])
             if isinstance(exp, dict)
@@ -412,18 +418,28 @@ def json_to_html(data: dict) -> str:
             company = exp.get("company", "")
             period = exp.get("period", "")
             bullets = exp.get("bullets") or exp.get("responsibilities") or exp.get("description") or []
+            key_outcomes = exp.get("key_outcomes") or []
 
             exp_title = f"{role}"
             if company:
                 exp_title = f"{role} | {company}"
 
             bullets_html = "".join(f"<li>{b}</li>" for b in bullets)
+            outcomes_html = ""
+            if key_outcomes:
+                outcomes_html = (
+                    '<p class="outcome-label">Key Outcomes</p>'
+                    + "<ul class=\"key-outcomes\">"
+                    + "".join(f"<li>{k}</li>" for k in key_outcomes)
+                    + "</ul>"
+                )
 
             exp_item = f'''<div class="exp-item">
             <div class="exp-header">
               <span class="exp-title">{exp_title}</span>
               <span class="exp-period">{period}</span>
             </div>
+            {outcomes_html}
             <ul>{bullets_html}</ul>
           </div>'''
             exp_items.append(exp_item)
