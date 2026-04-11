@@ -91,6 +91,11 @@ REWRITE_PROMPT = """You are a professional resume writer. Your task is to make t
  - ❌ Expand scope of past roles beyond what actually happened
  - ❌ Change the narrative of what your role was
 
+6. **Experience Deduplication**:
+  - Limit company/role labels to the header line for each experience entry; do not repeat them inside the bullets.
+  - If the summary already references “Head of Wallet” or the employer name, keep the experience bullets focused on fresh outcomes or processes, not re-stating the same title or company.
+  - When you detect a duplicated noun/verb that mirrors the company/role label, adjust the wording so each bullet highlights a distinct action, KPI, or stakeholder group.
+
 ## JD ALIGNMENT REQUIREMENTS:
 
 - **Echo JD phrasing** when it matches facts. If the JD mentions “wallet product owner”, “exchange wallet uptime”, “network upgrades”, “on-chain analytics”, “custody tooling (Hardware wallet, MPC, HSM, KSM, Embedded Custody)”, “customer support collaboration”, or “business growth strategy for CEX”, reuse those words exactly in the summary or experience bullets.
