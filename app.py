@@ -4,6 +4,7 @@ import re
 import time
 from collections import Counter
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 
 import httpx
@@ -11,6 +12,7 @@ import pdfplumber
 from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
 from fpdf import FPDF
 from flask import Flask, request, render_template, send_file, jsonify
+from playwright.sync_api import sync_playwright
 from werkzeug.exceptions import RequestEntityTooLarge
 
 # ── logging ──────────────────────────────────────────────────────────
@@ -553,6 +555,35 @@ def extract_company_name(jd: str) -> str:
 
 
 # ── routes ───────────────────────────────────────────────────────────
+
+
+@app.route("/download-pdf", methods=["POST"])
+def download_pdf():
+    """HTML을 받아 playwright로 PDF 생성"""
+    payload = request.json or {}
+    html = payload.get("html")
+    filename = (payload.get("filename") or "resume").strip() or "resume"
+
+    if not html:
+        return jsonify({"error": "HTML 콘텐츠가 제공되어야 합니다."}), 400
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.set_content(html, wait_until="networkidle")
+            pdf_bytes = page.pdf(
+                format="A4",
+                margin={"top": "18mm", "bottom": "18mm", "left": "18mm", "right": "18mm"},
+            )
+            browser.close()
+    except Exception as exc:
+        log.error("PDF 생성 실패", exc_info=exc)
+        return jsonify({"error": "PDF 생성 중 오류가 발생했습니다. 로그를 확인하세요."}), 500
+
+    buffer = BytesIO(pdf_bytes)
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name=f"{filename}.pdf", mimetype="application/pdf")
 
 
 @app.route("/")
