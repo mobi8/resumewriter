@@ -1,11 +1,15 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-# 8080 포트 사용 중인 프로세스 종료
-if lsof -ti :8080 > /dev/null 2>&1; then
-  echo "8080 포트 사용 중인 프로세스 종료 중..."
-  kill -9 $(lsof -ti :8080)
+# 8080 포트 및 관련 Flask 프로세스 모두 종료
+PIDS=$(lsof -ti :8080 2>/dev/null)
+if [ -n "$PIDS" ]; then
+  echo "8080 포트 프로세스 종료 중..."
+  kill -9 $PIDS 2>/dev/null
 fi
+# Flask debug reloader 부모 프로세스도 정리
+pkill -9 -f "python3 app.py" 2>/dev/null || true
+sleep 0.5
 
 # .env 파일에서 환경 변수 로드
 if [ -f .env ]; then
@@ -23,11 +27,16 @@ source venv/bin/activate
 # pip 버전 경고를 억제
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# 의존성 설치
-pip install -q -r requirements.txt
+# 의존성 설치 (핵심 패키지 import 가능하면 스킵)
+if python3 -c "import flask, pdfplumber, httpx, playwright, fpdf" 2>/dev/null; then
+  echo "✓ 의존성 최신 상태"
+else
+  echo "의존성 설치 중... (최초 1회만 실행됩니다)"
+  pip install -r requirements.txt
+fi
 
-# Playwright browser binaries 설치
-python3 -m playwright install chromium
+echo "✓ Playwright chromium 준비됨"
+
 # 환경 변수 확인
 if [ -z "$OPENROUTER_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
   echo "⚠️  경고: OPENROUTER_API_KEY 또는 OPENAI_API_KEY가 설정되지 않았습니다."

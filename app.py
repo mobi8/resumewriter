@@ -217,7 +217,7 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
   .summary-text {{ margin: 0; }}
 
   h2 {{ font-size: 11pt; font-weight: 600; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 14px 0 8px; letter-spacing: 0.5px; }}
-ㅁ4 
+
   .exp-item {{ margin-bottom: 10px; }}
   .exp-header {{ display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }}
   .exp-title {{ font-weight: 600; font-size: 10.5pt; color: #0066cc; }}
