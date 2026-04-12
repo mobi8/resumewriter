@@ -131,6 +131,9 @@ JD KEYWORDS TO ECHO (auto-extracted from the JD; only reuse ones that truly matc
 
 For each role, before the detailed responsibilities, add 2–3 "Key Outcomes" bullets that read like hooks: tie your existing metrics/achievements to JD themes (uptime, incident response, wallet infrastructure stability, partner enablement, growth). Keep tone confident, concise, and technical, emphasizing 24/7 reliability, compliance discipline, and outcome-driven language consistent with a Head of Wallet leader.
 
+- **Summary rewrite**: Rebuild the summary paragraph around the extracted keywords and the “Preferred Role Label.” Even when you retain the adjusted title, the summary should restate the key competencies (e.g., wallet governance, operational resilience, commercial strategy) in your own words using the new JD language—don’t simply copy the sample summary.
+- **Experience rewrite**: Each experience entry should also leverage the extracted keywords and preferred title. Highlight distinct contributions, metrics, or stakeholder work that align with the JD instead of reusing the previous summary text. Treat every bullet as a fresh angle built on the current JD’s vocabulary.
+
 - **Role title alignment**: Deduce the closest role label from the JD (e.g., “Head of Wallet”, “Wallet Product Owner”, “Wallet Operations Lead”) and use it as the summary title/first sentence. Use the supplied “Preferred Role Label” from the context block if it matches the JD; only fall back to the existing sample title when necessary. If the current title is narrower (“Lead Crypto Payments…”), wrap it as supporting text (“Head of Wallet Operations leader with prior Lead Crypto Payments & B2B Operations experience”). Do not invent new employers—keep the experience company names accurate, but let the top title speak directly to the JD role.
 
 ---
