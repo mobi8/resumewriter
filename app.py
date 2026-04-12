@@ -123,12 +123,15 @@ TARGET JOB:
 RESUME DATA:
 {resume}
 
+PREFERRED ROLE LABEL (derived from the JD; use this for the summary heading if it fits):
+{preferred_title}
+
 JD KEYWORDS TO ECHO (auto-extracted from the JD; only reuse ones that truly match your facts):
 {jd_keywords}
 
 For each role, before the detailed responsibilities, add 2–3 "Key Outcomes" bullets that read like hooks: tie your existing metrics/achievements to JD themes (uptime, incident response, wallet infrastructure stability, partner enablement, growth). Keep tone confident, concise, and technical, emphasizing 24/7 reliability, compliance discipline, and outcome-driven language consistent with a Head of Wallet leader.
 
-- **Role title alignment**: Deduce the closest role label from the JD (e.g., “Head of Wallet”, “Wallet Product Owner”, “Wallet Operations Lead”) and use it as the summary title/first sentence. If the existing sample title is narrower (“Lead Crypto Payments…”), wrap it as supporting text (“Head of Wallet Operations leader with prior Lead Crypto Payments & B2B Operations experience”). Do not invent new employers—keep the experience company names accurate, but let the top title speak directly to the JD role.
+- **Role title alignment**: Deduce the closest role label from the JD (e.g., “Head of Wallet”, “Wallet Product Owner”, “Wallet Operations Lead”) and use it as the summary title/first sentence. Use the supplied “Preferred Role Label” from the context block if it matches the JD; only fall back to the existing sample title when necessary. If the current title is narrower (“Lead Crypto Payments…”), wrap it as supporting text (“Head of Wallet Operations leader with prior Lead Crypto Payments & B2B Operations experience”). Do not invent new employers—keep the experience company names accurate, but let the top title speak directly to the JD role.
 
 ---
 
@@ -187,6 +190,27 @@ def format_keywords_for_prompt(keywords: list[str]) -> str:
     if not keywords:
         return "[]"
     return "[" + ", ".join(f'"{keyword}"' for keyword in keywords) + "]"
+
+
+def extract_role_label(jd_text: str) -> str:
+    """JD에서 적합한 역할 라벨(Head of ...)을 추출"""
+    cleaned = re.sub(r"<[^>]+>", " ", jd_text).strip()
+    patterns = [
+        r"(Head of [A-Za-z &/]+)",
+        r"(VP [A-Za-z &/]+)",
+        r"(Lead [A-Za-z &/]+)",
+        r"(Director [A-Za-z &/]+)",
+        r"(Chief [A-Za-z &/]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, cleaned, re.IGNORECASE)
+        if match:
+            return match.group(1).strip().title()
+    first_line = cleaned.splitlines()[0] if cleaned.splitlines() else ""
+    words = re.findall(r"[A-Za-z0-9&/]+", first_line)
+    if words:
+        return " ".join(words[:4]).strip()
+    return ""
 
 # ── HTML template for PDF ────────────────────────────────────────────
 
@@ -401,7 +425,7 @@ def validate_resume(data: dict) -> dict:
 
 
 
-def rewrite_for_jd(raw_text: str, structured: dict, jd: str, jd_keywords: list[str]) -> dict:
+def rewrite_for_jd(raw_text: str, structured: dict, jd: str, jd_keywords: list[str], preferred_title: str) -> dict:
     """JD에 맞게 이력서 재작성 → JSON 반환"""
     resume_str = json.dumps(structured, ensure_ascii=False)
     if raw_text:
@@ -411,6 +435,7 @@ def rewrite_for_jd(raw_text: str, structured: dict, jd: str, jd_keywords: list[s
         REWRITE_PROMPT.replace("{resume}", resume_str)
         .replace("{jd}", jd)
         .replace("{jd_keywords}", format_keywords_for_prompt(jd_keywords))
+        .replace("{preferred_title}", preferred_title or "Use the JD role label")
     )
 
     response = call_deepseek(prompt)
@@ -650,10 +675,11 @@ def generate():
     company = extract_company_name(jd)
     save_jd_log(jd, company)
     jd_keywords = extract_jd_keywords(jd)
+    preferred_title = extract_role_label(jd)
 
     # [4] Claude API로 sample + JD → 재작성
     try:
-        rewritten = rewrite_for_jd("", sample, jd, jd_keywords)
+        rewritten = rewrite_for_jd("", sample, jd, jd_keywords, preferred_title)
     except httpx.HTTPStatusError as exc:
         log.error("[4] DeepSeek HTTP error", exc_info=exc)
         return (
