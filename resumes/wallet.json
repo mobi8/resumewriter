@@ -29,7 +29,13 @@
         "Owned implementation and live operations of NPay.io wallet infrastructure, coordinating node stability, signing services, and multi-channel deposits/withdrawals.",
         "Coordinated transaction monitoring, risk mitigation, and structured escalation workflows to keep on-chain settlement delays below SLA thresholds.",
         "Maintained cross-brand reporting, documentation, and governance artifacts to support internal auditors and regulators.",
-        "Led payment exception reviews spanning closed-loop compliance, RG limits, KYC status, and gameplay activity to protect funds and uphold Chain-of-Trust at scale."
+        "Led payment exception reviews spanning closed-loop compliance, RG limits, KYC status, and gameplay activity to protect funds and uphold Chain-of-Trust at scale.",
+        "Launched and scaled crypto PSP (BTC, USDT, USDC) for GG Alliance products (GGPoker, WSOP+), growing volume from $0 to $2M/month in 10 months",
+        "Reduced payment costs by 30% and cut merchant integration time by 20% through streamlined workflows",
+        "Optimized liquidity operations and reduced annual fees by $1M using zero-fee stablecoin rails (Tron)",
+        "Expanded multi-chain infrastructure (Tron, BSC) and integrated BitGo custody for BTC, ETH, and Polygon",
+        "Integrated KYC/AML (SumSub) and KYT (Chainalysis) to enhance compliance and reduce fraud risk",
+        "Improved global customer support efficiency, reducing response time by 40%"
       ]
     },
     {
