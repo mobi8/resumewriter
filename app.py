@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import os
 import time
 from collections import Counter
 from datetime import datetime
@@ -778,4 +779,10 @@ def handle_too_large(error):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=8080)
+    debug_enabled = os.getenv("FLASK_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+    app.run(
+        host=os.getenv("FLASK_HOST", "127.0.0.1"),
+        port=int(os.getenv("FLASK_PORT", "8080")),
+        debug=debug_enabled,
+        use_reloader=False,
+    )

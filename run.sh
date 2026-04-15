@@ -1,19 +1,27 @@
 #!/bin/bash
 cd "$(dirname "$0")"
+set -Eeuo pipefail
+
+trap 'rc=$?; echo "❌ run.sh failed at line ${LINENO} (exit ${rc})"; exit ${rc}' ERR
+echo "== Resume Writer boot =="
+echo "cwd: $(pwd)"
 
 # 8080 포트 및 관련 Flask 프로세스 모두 종료
-PIDS=$(lsof -ti :8080 2>/dev/null)
+PIDS=$(lsof -ti :8080 2>/dev/null || true)
 if [ -n "$PIDS" ]; then
   echo "8080 포트 프로세스 종료 중..."
   kill -9 $PIDS 2>/dev/null
 fi
 # Flask debug reloader 부모 프로세스도 정리
-pkill -9 -f "python3 app.py" 2>/dev/null || true
+pkill -9 -f "app.py" 2>/dev/null || true
 sleep 0.5
 
 # .env 파일에서 환경 변수 로드
 if [ -f .env ]; then
-  export $(cat .env | grep -v '^#' | xargs)
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
 fi
 
 # 가상환경 생성 및 활성화
@@ -22,17 +30,19 @@ if [ ! -d "venv" ]; then
   python3 -m venv venv
 fi
 
-source venv/bin/activate
+PYTHON="./venv/bin/python"
+echo "python: $("$PYTHON" -V 2>&1)"
+echo "python path: $("$PYTHON" -c 'import sys; print(sys.executable)')"
 
 # pip 버전 경고를 억제
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # 의존성 설치 (핵심 패키지 import 가능하면 스킵)
-if python3 -c "import flask, pdfplumber, httpx, playwright, fpdf" 2>/dev/null; then
+if "$PYTHON" -c "import flask, pdfplumber, httpx, playwright, fpdf" 2>/dev/null; then
   echo "✓ 의존성 최신 상태"
 else
   echo "의존성 설치 중... (최초 1회만 실행됩니다)"
-  pip install -r requirements.txt
+  "$PYTHON" -m pip install -r requirements.txt
 fi
 
 echo "✓ Playwright chromium 준비됨"
@@ -51,4 +61,4 @@ echo "✓ API 키 로드 완료"
 echo "🚀 Flask 앱 시작 중... (http://localhost:8080)"
 
 # 앱 실행
-python3 app.py
+exec "$PYTHON" -u app.py
