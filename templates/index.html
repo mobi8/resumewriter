@@ -6,60 +6,85 @@
   <title>Resume Writer</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #333; }
     .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
     h1 { font-size: 28px; margin-bottom: 8px; }
     .subtitle { color: #888; margin-bottom: 32px; font-size: 14px; }
 
+    /* 공통 섹션 */
     .section { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .section h2 { font-size: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
     .step { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: #333; color: #fff; border-radius: 50%; font-size: 12px; }
 
-    .field-row { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
-    .field-row label { font-size: 13px; color: #666; min-width: 100px; }
+    /* Step 0: 수동 편집 - 구분된 스타일 */
+    .section-manual {
+      background: #f8faff;
+      border: 1.5px solid #c7d9f5;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 12px;
+      box-shadow: none;
+    }
+    .section-manual h2 { font-size: 14px; color: #4a6fa5; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .section-manual .label-tag {
+      background: #e0ecff;
+      color: #3a6bc9;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      letter-spacing: 0.3px;
+    }
+
+    .divider { border: none; border-top: 2px dashed #ddd; margin: 8px 0 20px; }
+
+    .field-row { display: flex; gap: 12px; margin-bottom: 14px; align-items: center; }
+    .field-row label { font-size: 13px; color: #666; min-width: 80px; }
     .field-row select { border: 1px solid #ddd; border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; flex: 1; }
     .field-row select:focus { outline: none; border-color: #666; }
 
-    textarea { width: 100%; height: 250px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; }
+    textarea { width: 100%; height: 250px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; white-space: pre-wrap; }
     textarea:focus { outline: none; border-color: #666; }
+    .subsection-title { font-size: 13px; font-weight: 600; color: #555; margin: 10px 0 8px; }
+    .instruction-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 12px; }
+    .instruction-card { border: 1px solid #d7dbe0; border-radius: 10px; padding: 14px; background: #fafafa; }
+    .instruction-card-title { font-size: 13px; font-weight: 700; color: #333; margin-bottom: 4px; }
+    .instruction-card-note { font-size: 12px; color: #777; margin-bottom: 8px; }
+    .instruction-card-example { font-size: 13px; color: #1f3b63; background: #eef6ff; border: 1px solid #cfe2ff; border-radius: 8px; padding: 8px 10px; }
+    #bulletInstructions { width: 100%; min-height: 92px; border: 2px solid #4a6fa5; border-radius: 8px; padding: 12px; font-size: 14px; background: #fffdf5; margin-bottom: 8px; }
+    .mini-btn { background: #eee; border: 1px solid #ccc; border-radius: 6px; padding: 8px 10px; font-size: 12px; cursor: pointer; }
 
-    .btn { background: #333; color: #fff; border: none; padding: 12px 32px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
+    .btn { background: #333; color: #fff; border: none; padding: 10px 28px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
     .btn:hover { background: #555; }
     .btn:disabled { background: #ccc; cursor: not-allowed; }
-    .btn-row { display: flex; gap: 12px; margin-top: 16px; }
+    .btn-sm { background: #4a6fa5; color: #fff; border: none; padding: 8px 20px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background 0.2s; }
+    .btn-sm:hover { background: #3a5f95; }
+    .btn-row { display: flex; gap: 12px; margin-top: 14px; align-items: center; }
 
-    .status { padding: 8px 16px; border-radius: 6px; font-size: 13px; margin-top: 12px; display: none; }
+    .status { padding: 8px 16px; border-radius: 6px; font-size: 13px; margin-top: 10px; display: none; }
     .status.show { display: block; }
     .status.ok { background: #e8f5e9; color: #2e7d32; }
     .status.err { background: #ffebee; color: #c62828; }
     .status.loading { background: #e3f2fd; color: #1565c0; }
 
-    /* A4 Modal Styles */
+    /* Modal */
     .modal-overlay {
       display: none;
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       background: #ffffff;
       z-index: 1000;
       justify-content: center;
       align-items: center;
       padding: 40px;
     }
+    .modal-overlay.show { display: flex; }
 
-    .modal-overlay.show {
-      display: flex;
-    }
-
-    /* Main modal wrapper with sidebar layout */
     .modal-container {
       display: flex;
-      gap: 0;
       background: white;
       border-radius: 8px;
-      box-shadow: 0 12px 60px rgba(0, 0, 0, 0.25);
+      box-shadow: 0 12px 60px rgba(0,0,0,0.25);
       height: 90vh;
       max-height: 1200px;
       width: 100%;
@@ -67,7 +92,6 @@
       overflow: hidden;
     }
 
-    /* Left side: Document */
     .modal-content {
       flex: 1;
       background: #ffffff;
@@ -76,9 +100,7 @@
       align-items: flex-start;
       padding: 30px;
       overflow-y: auto;
-      position: relative;
     }
-
     .modal-content iframe {
       width: 100%;
       max-width: 840px;
@@ -88,39 +110,31 @@
       display: block;
     }
 
-    /* Right side: Sidebar */
     .modal-toolbar {
       width: 280px;
       background: #2c3e50;
-      padding: 30px 20px;
+      padding: 24px 20px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 18px;
       overflow-y: auto;
       border-left: 1px solid #34495e;
     }
-
-    .modal-section {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
+    .modal-section { display: flex; flex-direction: column; gap: 10px; }
     .modal-section-label {
       color: #ecf0f1;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      padding-bottom: 8px;
+      padding-bottom: 6px;
       border-bottom: 1px solid #34495e;
     }
-
     .modal-btn {
       background: #34495e;
       color: #ecf0f1;
       border: 1px solid #34495e;
-      padding: 12px 16px;
+      padding: 10px 16px;
       border-radius: 4px;
       font-size: 13px;
       cursor: pointer;
@@ -131,74 +145,96 @@
       gap: 6px;
       width: 100%;
     }
+    .modal-btn:hover { background: #475569; border-color: #475569; }
+    .modal-btn.primary { background: #3498db; border-color: #3498db; color: white; font-weight: 500; }
+    .modal-btn.primary:hover { background: #2980b9; border-color: #2980b9; }
+    .modal-btn.success { background: #27ae60; border-color: #27ae60; color: white; }
+    .modal-btn.success:hover { background: #219a52; border-color: #219a52; }
+    .modal-btn.danger { background: #e74c3c; border-color: #e74c3c; color: white; margin-top: auto; }
+    .modal-btn.danger:hover { background: #c0392b; border-color: #c0392b; }
+    .modal-btn:disabled { background: #7f8c8d; border-color: #7f8c8d; cursor: not-allowed; opacity: 0.6; }
 
-    .modal-btn:hover {
-      background: #475569;
-      border-color: #475569;
+    .save-input {
+      background: #1a2b3c;
+      border: 1px solid #445566;
+      border-radius: 4px;
+      padding: 8px 10px;
+      color: #ecf0f1;
+      font-size: 12px;
+      font-family: inherit;
+      width: 100%;
     }
-
-    .modal-btn.primary {
-      background: #3498db;
-      border-color: #3498db;
-      color: white;
-      font-weight: 500;
-    }
-
-    .modal-btn.primary:hover {
-      background: #2980b9;
-      border-color: #2980b9;
-    }
-
-    .modal-btn.danger {
-      background: #e74c3c;
-      border-color: #e74c3c;
-      color: white;
-      margin-top: auto;
-    }
-
-    .modal-btn.danger:hover {
-      background: #c0392b;
-      border-color: #c0392b;
-    }
-
-    .modal-btn:disabled {
-      background: #7f8c8d;
-      border-color: #7f8c8d;
-      cursor: not-allowed;
-      opacity: 0.6;
-    }
-
-    /* 편집 모드 활성화 */
-    .modal-content.editing * {
-      outline: none !important;
-    }
+    .save-input:focus { outline: none; border-color: #3498db; }
+    .save-input::placeholder { color: #7f8c8d; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Resume Writer</h1>
-    <p class="subtitle">샘플 선택 → JD 입력 → 맞춤 이력서 PDF 생성</p>
+    <p class="subtitle">CV 편집 → 베이스 선택 → JD 입력 → LLM 재작성</p>
 
-    <!-- Step 1: Sample Selection -->
-    <div class="section">
-      <h2><span class="step">1</span> 이력서 샘플 선택</h2>
+    <!-- Step 0: 수동 편집 (구분된 스타일) -->
+    <div class="section-manual">
+      <h2><span class="label-tag">STEP 0</span> CV 열기 &amp; 수동 편집</h2>
       <div class="field-row">
-        <label>샘플:</label>
-        <select id="sampleSelect">
-          <option value="">— 선택해주세요 —</option>
-          {% for sample in samples %}
-          <option value="{{ sample }}">{{ sample }}</option>
-          {% endfor %}
+        <label>파일:</label>
+        <select id="careerOpsEditSelect">
+          <option value="">— 불러오는 중... —</option>
         </select>
       </div>
-      <div class="status" id="sampleStatus"></div>
+      <div class="btn-row">
+        <button class="btn-sm" onclick="openCareerOpsEdit()">열기 &amp; 편집</button>
+      </div>
+      <div class="status" id="careerOpsEditStatus"></div>
     </div>
 
-    <!-- Step 2: JD Input & Generate -->
+    <hr class="divider">
+
+    <!-- Step 1: 베이스 이력서 선택 -->
     <div class="section">
-      <h2><span class="step">2</span> JD 입력 & 생성</h2>
+      <h2><span class="step">1</span> 베이스 이력서 선택</h2>
+      <div class="field-row">
+        <label>파일:</label>
+        <select id="baseSelect">
+          <option value="">— 선택해주세요 —</option>
+        </select>
+      </div>
+      <div class="status" id="baseStatus"></div>
+    </div>
+
+    <!-- Step 2: JD 입력 & 생성 -->
+    <div class="section">
+      <h2><span class="step">2</span> JD 입력 &amp; 생성</h2>
       <textarea id="jdInput" placeholder="채용공고(JD)를 여기에 붙여넣으세요..."></textarea>
-      <textarea id="directionInput" placeholder="(선택사항) 이력서 방향성 예: gaming 전략가 중심으로 하고 넷마블의 비중을 높이는 이력서를 만들었으면해" style="margin-top: 12px; height: 80px;"></textarea>
+
+      <div class="subsection-title">수정할 불렛 지시</div>
+      <div class="instruction-grid" style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px;">
+        <div class="instruction-card">
+          <div class="instruction-card-title">Summary</div>
+          <div class="instruction-card-note">짧고 직접적인 요약만 적기</div>
+          <div class="instruction-card-example">예: 2문장, role fit 먼저</div>
+        </div>
+        <div class="instruction-card">
+          <div class="instruction-card-title">Experience</div>
+          <div class="instruction-card-note">바꿀 회사/불렛만 적기</div>
+          <div class="instruction-card-example">예: GGPoker: deposit/withdrawal, confirmation</div>
+        </div>
+        <div class="instruction-card">
+          <div class="instruction-card-title">Skills</div>
+          <div class="instruction-card-note">남길 키워드만 적기</div>
+          <div class="instruction-card-example">예: wallet ops, payments, reconciliation</div>
+        </div>
+        <div class="instruction-card">
+          <div class="instruction-card-title">General</div>
+          <div class="instruction-card-note">전체 톤/제외 표현</div>
+          <div class="instruction-card-example">예: 과한 리더십 표현 제거</div>
+        </div>
+      </div>
+      <textarea id="bulletInstructions" placeholder="섹션별 수정할 불렛만 적기. 예: Experience > GGPoker: deposit/withdrawal, confirmation"></textarea>
+      <div class="btn-row" style="margin-top: 8px;">
+        <button class="btn-sm" type="button" onclick="addBulletInstruction()">+ 항목 추가</button>
+      </div>
+
       <div class="btn-row">
         <button class="btn" id="generateBtn" onclick="generate()">이력서 생성</button>
       </div>
@@ -206,7 +242,7 @@
     </div>
   </div>
 
-  <!-- A4 Resume Modal -->
+  <!-- Modal -->
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal-container">
       <div class="modal-content">
@@ -214,12 +250,18 @@
       </div>
       <div class="modal-toolbar">
         <div class="modal-section">
-          <div class="modal-section-label">보기</div>
+          <div class="modal-section-label">편집</div>
           <button class="modal-btn" id="editBtn" onclick="toggleEdit()">✏️ 편집 모드</button>
         </div>
         <div class="modal-section">
-          <div class="modal-section-label">출력</div>
-          <button class="modal-btn primary" onclick="savePdf()">💾 PDF 저장</button>
+          <div class="modal-section-label">Career-Ops에 저장</div>
+          <input class="save-input" id="saveFilename" placeholder="파일명 (확장자 제외)">
+          <button class="modal-btn success" onclick="saveToCareerOps()">💾 저장</button>
+          <div class="status" id="modalSaveStatus"></div>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-label">PDF</div>
+          <button class="modal-btn primary" onclick="savePdf()">⬇️ PDF 다운로드</button>
         </div>
         <div style="flex: 1;"></div>
         <div class="modal-section">
@@ -230,55 +272,86 @@
   </div>
 
   <script>
-    const sampleSelect = document.getElementById('sampleSelect');
     const modalOverlay = document.getElementById('modalOverlay');
     const resumeFrame = document.getElementById('resumeFrame');
     const editBtn = document.getElementById('editBtn');
     let isEditingMode = false;
+    let careerOpsList = [];
 
     function showStatus(id, msg, type) {
       const el = document.getElementById(id);
+      if (!el) return;
       el.textContent = msg;
       el.className = 'status show ' + type;
     }
 
     async function parseJsonResponse(res) {
       const text = await res.text();
-      if (!res.ok) {
-        const message = text.trim() || `서버 오류 (${res.status})`;
-        throw new Error(message);
-      }
+      if (!res.ok) throw new Error(text.trim() || `서버 오류 (${res.status})`);
+      try { return JSON.parse(text); } catch { throw new Error('서버 응답이 JSON 형식이 아닙니다.'); }
+    }
+
+    // career-ops 파일 목록 로드 (두 드롭다운 공유)
+    async function loadCareerOpsList() {
       try {
-        return JSON.parse(text);
-      } catch {
-        throw new Error('서버 응답이 JSON 형식이 아닙니다.');
+        const res = await fetch('/career-ops/list');
+        careerOpsList = await res.json();
+        populateSelect('careerOpsEditSelect', '— 선택해주세요 —');
+        populateSelect('baseSelect', '— 선택해주세요 —');
+      } catch (e) {
+        ['careerOpsEditSelect', 'baseSelect'].forEach(id => {
+          document.getElementById(id).innerHTML = '<option value="">불러오기 실패</option>';
+        });
       }
     }
 
-    sampleSelect.addEventListener('change', () => {
-      if (sampleSelect.value) {
-        showStatus('sampleStatus', `'${sampleSelect.value}' 선택됨`, 'ok');
-      }
+    function populateSelect(id, placeholder) {
+      const sel = document.getElementById(id);
+      sel.innerHTML = `<option value="">${placeholder}</option>`;
+      const current = window.currentResumeFilename;
+      careerOpsList.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.filename;
+        opt.textContent = f.display;
+        if (current && f.filename === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    document.getElementById('baseSelect').addEventListener('change', function() {
+      if (this.value) showStatus('baseStatus', `선택됨: ${this.options[this.selectedIndex].text}`, 'ok');
     });
 
+    // Step 0: 수동 편집용 열기
+    async function openCareerOpsEdit() {
+      const sel = document.getElementById('careerOpsEditSelect');
+      const filename = sel.value;
+      if (!filename) { showStatus('careerOpsEditStatus', '파일을 선택해주세요', 'err'); return; }
+      showStatus('careerOpsEditStatus', '불러오는 중...', 'loading');
+      try {
+        const res = await fetch(`/career-ops/open/${encodeURIComponent(filename)}`);
+        const data = await res.json();
+        if (data.error) { showStatus('careerOpsEditStatus', data.error, 'err'); return; }
+        showStatus('careerOpsEditStatus', `로드됨: ${data.filename}`, 'ok');
+        document.getElementById('saveFilename').value = data.filename;
+        openModal(data.html, data.filename);
+      } catch (e) {
+        showStatus('careerOpsEditStatus', '오류: ' + e.message, 'err');
+      }
+    }
+
+    // 모달 열기
     function openModal(html, filename) {
-      // 파일명 저장 (PDF 다운로드 시 사용)
       window.currentResumeFilename = filename || 'resume';
-
-      // Blob URL을 이용한 안정적인 로드
+      window.currentResumeHtml = html;
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-
-      // iframe src 설정
-      resumeFrame.src = url;
-
-      // 모달 표시
+      resumeFrame.src = URL.createObjectURL(blob);
       modalOverlay.classList.add('show');
       isEditingMode = false;
       editBtn.textContent = '✏️ 편집 모드';
       editBtn.classList.remove('primary');
-
-      console.log('✓ 모달 열림, 이력서 로드 중...');
+      const sfEl = document.getElementById('saveFilename');
+      if (sfEl && !sfEl.value) sfEl.value = filename || '';
     }
 
     function closeModal() {
@@ -286,8 +359,6 @@
       isEditingMode = false;
       editBtn.textContent = '✏️ 편집 모드';
       editBtn.classList.remove('primary');
-
-      // iframe 초기화
       try {
         const doc = resumeFrame.contentDocument;
         if (doc && doc.body) {
@@ -295,56 +366,71 @@
           doc.body.style.outline = 'none';
           doc.body.style.background = 'white';
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
     }
 
     function toggleEdit() {
       try {
         const doc = resumeFrame.contentDocument;
-        if (!doc || !doc.body) {
-          alert('이력서가 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
-          return;
-        }
-
+        if (!doc || !doc.body) { alert('이력서가 아직 로드되지 않았습니다.'); return; }
         isEditingMode = !isEditingMode;
         const body = doc.body;
-
         if (isEditingMode) {
           body.contentEditable = 'true';
           body.style.outline = '2px dashed #3498db';
-          body.style.background = '#ffffff';
           editBtn.textContent = '✅ 완료';
-          editBtn.classList.remove('modal-btn');
-          editBtn.classList.add('modal-btn', 'primary');
+          editBtn.classList.add('primary');
           body.focus();
         } else {
           body.contentEditable = 'false';
           body.style.outline = 'none';
-          body.style.background = 'white';
           editBtn.textContent = '✏️ 편집 모드';
           editBtn.classList.remove('primary');
         }
-      } catch (e) {
-        console.error('편집 모드 토글 오류:', e);
-        alert('편집 모드를 활성화할 수 없습니다.');
-      }
+      } catch (e) { alert('편집 모드 오류: ' + e.message); }
+    }
+
+    // Career-Ops에 저장
+    async function saveToCareerOps() {
+      const filenameInput = document.getElementById('saveFilename');
+      const filename = filenameInput.value.trim();
+      if (!filename) { showStatus('modalSaveStatus', '파일명을 입력해주세요', 'err'); return; }
+
+      let htmlContent;
+      try {
+        const doc = resumeFrame.contentDocument;
+        if (!doc || !doc.documentElement) { showStatus('modalSaveStatus', '이력서가 로드되지 않았습니다', 'err'); return; }
+        if (doc.body) { doc.body.contentEditable = 'false'; doc.body.style.outline = 'none'; }
+        isEditingMode = false;
+        editBtn.textContent = '✏️ 편집 모드';
+        editBtn.classList.remove('primary');
+        htmlContent = doc.documentElement.outerHTML;
+      } catch (e) { showStatus('modalSaveStatus', '오류: ' + e.message, 'err'); return; }
+
+      showStatus('modalSaveStatus', '저장 중...', 'loading');
+      try {
+        const res = await fetch('/career-ops/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html: htmlContent, filename })
+        });
+        const data = await res.json();
+        if (data.error) { showStatus('modalSaveStatus', data.error, 'err'); return; }
+        showStatus('modalSaveStatus', `저장됨: ${data.filename}`, 'ok');
+        window.currentResumeFilename = data.filename;
+        window.currentResumeHtml = htmlContent;
+        await loadCareerOpsList();
+        document.getElementById('baseSelect').value = data.filename;
+        window.lastSavedFilename = data.filename;
+      } catch (e) { showStatus('modalSaveStatus', '오류: ' + e.message, 'err'); }
     }
 
     function savePdf() {
-      const pdfBtn = document.querySelector('.modal-btn.primary[onclick="savePdf()"]') ||
-                     [...document.querySelectorAll('.modal-btn')].find(b => b.textContent.includes('PDF'));
+      const pdfBtn = [...document.querySelectorAll('.modal-btn')].find(b => b.textContent.includes('PDF'));
       try {
         const iframeWindow = resumeFrame.contentWindow;
         const doc = iframeWindow ? iframeWindow.document : null;
-
-        if (!doc || !doc.documentElement) {
-          alert('이력서가 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
-          return;
-        }
-
-        // 편집 모드 스타일 완전 리셋 (padding 포함)
+        if (!doc || !doc.documentElement) { alert('이력서가 아직 로드되지 않았습니다.'); return; }
         if (doc.body) {
           doc.body.contentEditable = 'false';
           doc.body.style.outline = 'none';
@@ -354,84 +440,90 @@
         isEditingMode = false;
         editBtn.textContent = '✏️ 편집 모드';
         editBtn.classList.remove('primary');
-
-        // iframe의 전체 HTML 추출
         const htmlContent = doc.documentElement.outerHTML;
         const filename = window.currentResumeFilename || 'resume';
-
-        // 로딩 피드백
         if (pdfBtn) { pdfBtn.textContent = '⏳ 생성 중...'; pdfBtn.disabled = true; }
-
-        // /download-pdf 호출
         fetch('/download-pdf', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: htmlContent, filename: filename })
+          body: JSON.stringify({ html: htmlContent, filename })
         })
-        .then(async response => {
-          if (!response.ok) {
-            let errorMsg = `PDF 생성 실패 (서버 오류 ${response.status})`;
-            try {
-              const payload = await response.json();
-              if (payload?.error) errorMsg = payload.error;
-            } catch (_) {}
-            throw new Error(errorMsg);
+        .then(async res => {
+          if (!res.ok) {
+            let msg = `PDF 생성 실패 (${res.status})`;
+            try { const p = await res.json(); if (p?.error) msg = p.error; } catch (_) {}
+            throw new Error(msg);
           }
-          return response.blob();
+          return res.blob();
         })
         .then(blob => {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
-          a.href = url;
-          a.download = `${filename}.pdf`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+          a.href = url; a.download = `${filename}.pdf`;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
           URL.revokeObjectURL(url);
-          console.log('✓ PDF 저장 완료');
         })
-        .catch(e => {
-          console.error('PDF 생성 오류:', e);
-          alert('PDF 저장 실패: ' + e.message);
-        })
-        .finally(() => {
-          if (pdfBtn) { pdfBtn.textContent = '💾 PDF 저장'; pdfBtn.disabled = false; }
-        });
+        .catch(e => alert('PDF 저장 실패: ' + e.message))
+        .finally(() => { if (pdfBtn) { pdfBtn.textContent = '⬇️ PDF 다운로드'; pdfBtn.disabled = false; } });
       } catch (e) {
-        console.error('savePdf 오류:', e);
-        alert('PDF 저장 중 오류가 발생했습니다: ' + e.message);
-        if (pdfBtn) { pdfBtn.textContent = '💾 PDF 저장'; pdfBtn.disabled = false; }
+        alert('PDF 저장 오류: ' + e.message);
+        if (pdfBtn) { pdfBtn.textContent = '⬇️ PDF 다운로드'; pdfBtn.disabled = false; }
       }
     }
 
-    async function generate() {
-      const sample = sampleSelect.value.trim();
-      const jd = document.getElementById('jdInput').value.trim();
-      const direction = document.getElementById('directionInput').value.trim();
+    function addBulletInstruction() {
+      const box = document.getElementById('bulletInstructions');
+      box.value += (box.value ? '\n' : '') + 'Experience > GGPoker: deposit/withdrawal';
+      box.focus();
+    }
 
-      if (!sample) { showStatus('genStatus', '샘플을 선택해주세요', 'err'); return; }
+    window.addEventListener('DOMContentLoaded', () => {
+      const list = document.getElementById('bulletInstructionList');
+      if (list && !list.children.length) addBulletInstruction();
+    });
+
+    function collectSectionDirections() {
+      const box = document.getElementById('bulletInstructions');
+      const raw = (box?.value || '').trim();
+      if (!raw) return '';
+      return raw.split('\n').map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return '';
+        return /^(summary|experience|skills|general|title)\s*[:>\-]?/i.test(trimmed)
+          ? trimmed.replace(/^(summary|experience|skills|general|title)\s*[:>\-]?\s*/i, (_, k) => `${k.toLowerCase()}: `)
+          : (trimmed.startsWith('-') ? trimmed : `- ${trimmed}`);
+      }).filter(Boolean).join('\n');
+    }
+
+    async function generate() {
+      const baseFile = document.getElementById('baseSelect').value.trim();
+      const jd = document.getElementById('jdInput').value.trim();
+      const direction = collectSectionDirections();
+      const preserveCurrent = !!window.currentResumeHtml;
+
+      if (!baseFile && !preserveCurrent) { showStatus('genStatus', '베이스 이력서를 선택해주세요', 'err'); return; }
       if (!jd) { showStatus('genStatus', 'JD를 입력해주세요', 'err'); return; }
 
       const btn = document.getElementById('generateBtn');
       btn.disabled = true;
       btn.textContent = '생성 중...';
-      showStatus('genStatus', 'Claude가 이력서를 재작성 중입니다...', 'loading');
+      showStatus('genStatus', 'LLM이 이력서를 재작성 중입니다...', 'loading');
 
       try {
         const res = await fetch('/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sample: sample,
-            jd_text: jd,
-            direction: direction || null
-          })
+          body: JSON.stringify({ career_ops_file: baseFile || null, jd_text: jd, direction: direction || null, preserve_current: preserveCurrent, current_html: window.currentResumeHtml || null })
         });
         const data = await parseJsonResponse(res);
         if (data.error) { showStatus('genStatus', data.error, 'err'); return; }
-
-        showStatus('genStatus', `생성 완료 — ${data.filename}`, 'ok');
-        openModal(data.html, data.filename);
+        const savedName = data.saved_filename || data.filename;
+        showStatus('genStatus', `생성 완료 — ${savedName}`, 'ok');
+        document.getElementById('saveFilename').value = savedName.replace(/\.html$/i, '');
+        openModal(data.html, savedName.replace(/\.html$/i, ''));
+        window.currentResumeHtml = data.html;
+        window.lastGeneratedFilename = savedName.replace(/\.html$/i, '');
+        window.currentResumeFilename = savedName.replace(/\.html$/i, '');
       } catch (e) {
         showStatus('genStatus', '오류: ' + e.message, 'err');
       } finally {
@@ -440,12 +532,11 @@
       }
     }
 
-    // ESC 키로 모달 닫기
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && modalOverlay.classList.contains('show')) {
-        closeModal();
-      }
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && modalOverlay.classList.contains('show')) closeModal();
     });
+
+    loadCareerOpsList();
   </script>
 </body>
 </html>

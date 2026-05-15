@@ -7,14 +7,16 @@ echo "== Resume Writer boot =="
 echo "cwd: $(pwd)"
 
 # 8080 포트 및 관련 Flask 프로세스 모두 종료
+pkill -9 -f "app.py" 2>/dev/null || true
 PIDS=$(lsof -ti :8080 2>/dev/null || true)
 if [ -n "$PIDS" ]; then
   echo "8080 포트 프로세스 종료 중..."
-  kill -9 $PIDS 2>/dev/null
+  kill -9 $PIDS 2>/dev/null || true
 fi
-# Flask debug reloader 부모 프로세스도 정리
-pkill -9 -f "app.py" 2>/dev/null || true
-sleep 0.5
+# 포트가 완전히 해제될 때까지 대기 (최대 5초)
+for i in $(seq 1 10); do
+  lsof -ti :8080 2>/dev/null && sleep 0.5 || break
+done
 
 # .env 파일에서 환경 변수 로드
 if [ -f .env ]; then
