@@ -867,6 +867,7 @@ def call_deepseek(prompt: str) -> dict:
     max_retries = 3
     for attempt in range(max_retries):
         try:
+            log.info("[llm] OpenRouter request start — model=%s chars=%s", OPENROUTER_MODEL, len(prompt))
             response = http_client.post(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
             if response.status_code == 429:
                 wait_time = min(2 ** attempt, 30)  # 지수 백오프: 1초, 2초, 4초...
@@ -875,6 +876,7 @@ def call_deepseek(prompt: str) -> dict:
                     time.sleep(wait_time)
                     continue
             response.raise_for_status()
+            log.info("[llm] OpenRouter response ok — status=%s", response.status_code)
             return response.json()
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429 and attempt < max_retries - 1:
@@ -1020,14 +1022,25 @@ def parse_direction_sections(direction: str) -> dict[str, str]:
     return {k: v.strip() for k, v in sections.items()}
 
 
+def extract_between_comments(html_content: str, start: str, end: str | None = None) -> str:
+    """Return an HTML chunk between section comments when the template uses comment markers."""
+    end_pattern = rf"(?=<!--\s*{re.escape(end)}\s*-->)" if end else r"(?=</div>\s*</body>|</body>)"
+    pattern = rf"(<!--\s*{re.escape(start)}\s*-->[\s\S]*?){end_pattern}"
+    match = re.search(pattern, html_content, re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
 def extract_html_section_snapshot(html_content: str) -> str:
     summary_match = re.search(r"(<div class=\"summary-block\">[\s\S]*?</div>)", html_content, re.IGNORECASE)
     experience_match = re.search(r"(<h2>Experience</h2>[\s\S]*?)(?=<h2>Skills</h2>|</div>\s*</body>)", html_content, re.IGNORECASE)
     skills_match = re.search(r"(<h2>Skills</h2>[\s\S]*?</div>)", html_content, re.IGNORECASE)
+    summary_html = summary_match.group(1) if summary_match else extract_between_comments(html_content, "PROFESSIONAL SUMMARY", "CORE COMPETENCIES")
+    experience_html = experience_match.group(1) if experience_match else extract_between_comments(html_content, "WORK EXPERIENCE", "SKILLS")
+    skills_html = skills_match.group(1) if skills_match else extract_between_comments(html_content, "SKILLS", "EDUCATION")
     return "\n".join([
-        f"SUMMARY_SNAPSHOT: {summary_match.group(1) if summary_match else '(none)'}",
-        f"EXPERIENCE_SNAPSHOT: {experience_match.group(1) if experience_match else '(none)'}",
-        f"SKILLS_SNAPSHOT: {skills_match.group(1) if skills_match else '(none)'}",
+        f"SUMMARY_SNAPSHOT: {summary_html or '(none)'}",
+        f"EXPERIENCE_SNAPSHOT: {experience_html or '(none)'}",
+        f"SKILLS_SNAPSHOT: {skills_html or '(none)'}",
     ])
 
 
@@ -1036,9 +1049,9 @@ def split_html_sections(html_content: str) -> dict[str, str]:
     exp_match = re.search(r"(<h2>Experience</h2>[\s\S]*?)(?=<h2>Skills</h2>|</div>\s*</body>)", html_content, re.IGNORECASE)
     skills_match = re.search(r"(<h2>Skills</h2>[\s\S]*?</div>)", html_content, re.IGNORECASE)
     return {
-        "summary": summary_match.group(1) if summary_match else "",
-        "experience": exp_match.group(1) if exp_match else "",
-        "skills": skills_match.group(1) if skills_match else "",
+        "summary": summary_match.group(1) if summary_match else extract_between_comments(html_content, "PROFESSIONAL SUMMARY", "CORE COMPETENCIES"),
+        "experience": exp_match.group(1) if exp_match else extract_between_comments(html_content, "WORK EXPERIENCE", "SKILLS"),
+        "skills": skills_match.group(1) if skills_match else extract_between_comments(html_content, "SKILLS", "EDUCATION"),
     }
 
 
@@ -1108,6 +1121,27 @@ def rewrite_html_for_jd(
         if template_mode == "career_ops"
         else "General ATS mode: preserve the existing detail depth while aligning wording honestly to the job description."
     )
+    matched_sections = [name for name, value in sections.items() if value]
+    log.info("[4] HTML section matches — %s", ", ".join(matched_sections) or "none")
+
+    if not matched_sections:
+        prompt = build_html_rewrite_prompt(stripped_html, jd, jd_keywords, preferred_title, direction)
+        prompt = prompt.replace("## REWRITE RULES", f"## WRITING MODE\n{mode_guidance}\n\n## REWRITE RULES")
+        response = call_deepseek(prompt)
+        choices = response.get("choices") or []
+        if not choices:
+            raise ValueError("LLM 응답에 선택지가 없습니다: full_html")
+        content = choices[0].get("message", {}).get("content", "").strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```[^\n]*\n?", "", content)
+            content = re.sub(r"\n?```$", "", content.rstrip())
+        if style_blocks:
+            styles_str = "\n".join(style_blocks)
+            if "</head>" in content:
+                content = content.replace("</head>", f"{styles_str}\n</head>", 1)
+            else:
+                content = styles_str + "\n" + content
+        return content
 
     rewritten_sections = {}
     for section_name in ("summary", "experience", "skills"):
