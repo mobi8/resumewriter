@@ -1524,7 +1524,7 @@ def get_sample(name):
 
 
 def _career_ops_sorted() -> list[dict]:
-    """career-ops HTML 파일 목록을 날짜 내림차순으로 반환"""
+    """career-ops HTML 파일 목록을 수정시간 기준 내림차순으로 반환"""
     if not CAREER_OPS_HTML_DIR.exists():
         return []
     date_re = re.compile(r"(\d{4}-\d{2}-\d{2})")
@@ -1533,10 +1533,11 @@ def _career_ops_sorted() -> list[dict]:
         m = date_re.search(p.stem)
         date_str = m.group(1) if m else "0000-00-00"
         display_name = date_re.sub("", p.stem).strip("-").strip("_").strip()
-        mtime = datetime.fromtimestamp(p.stat().st_mtime).strftime("%H:%M")
-        items.append({"filename": p.name, "date": date_str, "display": f"[{date_str} {mtime}] {display_name}"})
-    items.sort(key=lambda x: x["date"], reverse=True)
-    return items
+        stat = p.stat()
+        mtime = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+        items.append({"filename": p.name, "mtime": stat.st_mtime, "display": f"[{mtime}] {display_name}"})
+    items.sort(key=lambda x: x["mtime"], reverse=True)
+    return [{k: v for k, v in item.items() if k != "mtime"} for item in items]
 
 
 def _html_to_text(html: str) -> str:
@@ -1598,6 +1599,7 @@ def career_ops_save():
         return jsonify({"error": "career-ops output 디렉토리가 없습니다"}), 500
 
     dest.write_text(html, encoding="utf-8")
+    os.utime(dest, None)
     log.info(f"[career-ops] saved → {safe_name}")
     return jsonify({"ok": True, "filename": safe_name})
 

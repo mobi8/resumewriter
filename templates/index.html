@@ -335,6 +335,8 @@
         showStatus('careerOpsEditStatus', `로드됨: ${data.filename}`, 'ok');
         document.getElementById('saveFilename').value = data.filename;
         openModal(data.html, data.filename);
+        window.currentResumeFilename = data.filename;
+        window.currentResumeHtml = data.html;
       } catch (e) {
         showStatus('careerOpsEditStatus', '오류: ' + e.message, 'err');
       }
@@ -421,6 +423,7 @@
         window.currentResumeHtml = htmlContent;
         await loadCareerOpsList();
         document.getElementById('baseSelect').value = data.filename;
+        document.getElementById('baseSelect').dispatchEvent(new Event('change'));
         window.lastSavedFilename = data.filename;
       } catch (e) { showStatus('modalSaveStatus', '오류: ' + e.message, 'err'); }
     }
