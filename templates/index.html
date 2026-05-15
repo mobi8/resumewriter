@@ -46,13 +46,19 @@
     textarea { width: 100%; height: 250px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; white-space: pre-wrap; }
     textarea:focus { outline: none; border-color: #666; }
     .subsection-title { font-size: 13px; font-weight: 600; color: #555; margin: 10px 0 8px; }
-    .instruction-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 12px; }
-    .instruction-card { border: 1px solid #d7dbe0; border-radius: 10px; padding: 14px; background: #fafafa; }
-    .instruction-card-title { font-size: 13px; font-weight: 700; color: #333; margin-bottom: 4px; }
-    .instruction-card-note { font-size: 12px; color: #777; margin-bottom: 8px; }
-    .instruction-card-example { font-size: 13px; color: #1f3b63; background: #eef6ff; border: 1px solid #cfe2ff; border-radius: 8px; padding: 8px 10px; }
-    #bulletInstructions { width: 100%; min-height: 92px; border: 2px solid #4a6fa5; border-radius: 8px; padding: 12px; font-size: 14px; background: #fffdf5; margin-bottom: 8px; }
-    .mini-btn { background: #eee; border: 1px solid #ccc; border-radius: 6px; padding: 8px 10px; font-size: 12px; cursor: pointer; }
+    #bulletInstructions { width: 100%; height: 74px; min-height: 58px; border: 1px solid #ddd; border-radius: 8px; padding: 9px 10px; font-size: 13px; background: #fff; margin-bottom: 8px; resize: vertical; font-family: inherit; line-height: 1.45; }
+    .instruction-builder { display: grid; grid-template-columns: 150px 1fr auto; gap: 8px; align-items: center; margin-top: 8px; }
+    .instruction-builder select,
+    .instruction-builder input { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; min-width: 0; }
+    .instruction-builder select:focus,
+    .instruction-builder input:focus { outline: none; border-color: #666; }
+    .mini-btn { background: #4a6fa5; color: #fff; border: 1px solid #4a6fa5; border-radius: 6px; padding: 8px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+    .mini-btn:hover { background: #3a5f95; }
+    .mode-inline { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .mode-inline label { font-size: 13px; color: #666; min-width: auto; }
+    .mode-inline select { width: auto; min-width: 180px; flex: 0 0 auto; }
+    .generate-row { display: flex; gap: 12px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+    .preserve-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #222; background: #fff; border: 1px solid #cfd6df; padding: 8px 10px; border-radius: 8px; white-space: nowrap; }
 
     .btn { background: #333; color: #fff; border: none; padding: 10px 28px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
     .btn:hover { background: #555; }
@@ -166,6 +172,27 @@
     }
     .save-input:focus { outline: none; border-color: #3498db; }
     .save-input::placeholder { color: #7f8c8d; }
+
+    @media (max-width: 640px) {
+      .container { padding: 20px 12px; }
+      .section { padding: 18px 14px; border-radius: 10px; }
+      .section-manual { padding: 16px 14px; }
+      .field-row { flex-direction: column; align-items: stretch; gap: 6px; }
+      .field-row label { min-width: 0; }
+      textarea { height: 180px; }
+      #bulletInstructions { height: 68px; }
+      .instruction-builder { grid-template-columns: 1fr; }
+      .instruction-builder select,
+      .instruction-builder input,
+      .instruction-builder button { width: 100%; }
+      .generate-row { align-items: stretch; }
+      .generate-row .mode-inline,
+      .generate-row .btn,
+      .generate-row .preserve-label { width: 100%; }
+      .mode-inline { display: grid; grid-template-columns: 82px 1fr; gap: 8px; }
+      .mode-inline select { width: 100%; min-width: 0; }
+      .preserve-label { justify-content: center; }
+    }
   </style>
 </head>
 <body>
@@ -208,35 +235,32 @@
       <textarea id="jdInput" placeholder="채용공고(JD)를 여기에 붙여넣으세요..."></textarea>
 
       <div class="subsection-title">수정할 불렛 지시</div>
-      <div class="instruction-grid" style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px;">
-        <div class="instruction-card">
-          <div class="instruction-card-title">Summary</div>
-          <div class="instruction-card-note">짧고 직접적인 요약만 적기</div>
-          <div class="instruction-card-example">예: 2문장, role fit 먼저</div>
-        </div>
-        <div class="instruction-card">
-          <div class="instruction-card-title">Experience</div>
-          <div class="instruction-card-note">바꿀 회사/불렛만 적기</div>
-          <div class="instruction-card-example">예: GGPoker: deposit/withdrawal, confirmation</div>
-        </div>
-        <div class="instruction-card">
-          <div class="instruction-card-title">Skills</div>
-          <div class="instruction-card-note">남길 키워드만 적기</div>
-          <div class="instruction-card-example">예: wallet ops, payments, reconciliation</div>
-        </div>
-        <div class="instruction-card">
-          <div class="instruction-card-title">General</div>
-          <div class="instruction-card-note">전체 톤/제외 표현</div>
-          <div class="instruction-card-example">예: 과한 리더십 표현 제거</div>
-        </div>
-      </div>
-      <textarea id="bulletInstructions" placeholder="섹션별 수정할 불렛만 적기. 예: Experience > GGPoker: deposit/withdrawal, confirmation"></textarea>
-      <div class="btn-row" style="margin-top: 8px;">
+      <textarea id="bulletInstructions" placeholder="필요할 때만 적으세요. 예: Summary: 2문장 / Experience > GGPoker: deposit, withdrawal, confirmation / Skills: wallet ops, payments"></textarea>
+      <div class="instruction-builder">
+        <select id="instructionCategory" aria-label="지시 카테고리">
+          <option value="Summary">Summary</option>
+          <option value="Experience">Experience</option>
+          <option value="Skills">Skills</option>
+          <option value="Title">Title</option>
+          <option value="General">General</option>
+        </select>
+        <input id="instructionText" type="text" placeholder="예: GGPoker: deposit, withdrawal, confirmation">
         <button class="btn-sm" type="button" onclick="addBulletInstruction()">+ 항목 추가</button>
       </div>
 
-      <div class="btn-row">
+      <div class="generate-row">
+        <div class="mode-inline" style="margin-bottom:0;">
+          <label>작성 모드</label>
+          <select id="llmModeSelect">
+            <option value="ats">일반 ATS</option>
+            <option value="career_ops">Career-Ops ATS</option>
+          </select>
+        </div>
         <button class="btn" id="generateBtn" onclick="generate()">이력서 생성</button>
+        <label class="preserve-label">
+          <input type="checkbox" id="preserveCurrentMode">
+          현재본 이어서 수정
+        </label>
       </div>
       <div class="status" id="genStatus"></div>
     </div>
@@ -476,14 +500,19 @@
 
     function addBulletInstruction() {
       const box = document.getElementById('bulletInstructions');
-      box.value += (box.value ? '\n' : '') + 'Experience > GGPoker: deposit/withdrawal';
-      box.focus();
+      const category = document.getElementById('instructionCategory')?.value || 'Experience';
+      const input = document.getElementById('instructionText');
+      const detail = (input?.value || '').trim();
+      if (!detail) {
+        if (input) input.focus();
+        showStatus('genStatus', '추가할 지시 내용을 입력해주세요', 'err');
+        return;
+      }
+      const line = `${category}: ${detail}`;
+      box.value += (box.value.trim() ? '\n' : '') + line;
+      if (input) input.value = '';
+      if (input) input.focus();
     }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      const list = document.getElementById('bulletInstructionList');
-      if (list && !list.children.length) addBulletInstruction();
-    });
 
     function collectSectionDirections() {
       const box = document.getElementById('bulletInstructions');
@@ -502,7 +531,8 @@
       const baseFile = document.getElementById('baseSelect').value.trim();
       const jd = document.getElementById('jdInput').value.trim();
       const direction = collectSectionDirections();
-      const preserveCurrent = !!window.currentResumeHtml;
+      const preserveCurrent = document.getElementById('preserveCurrentMode')?.checked || !!window.currentResumeHtml;
+      const llmMode = document.getElementById('llmModeSelect')?.value || 'ats';
 
       if (!baseFile && !preserveCurrent) { showStatus('genStatus', '베이스 이력서를 선택해주세요', 'err'); return; }
       if (!jd) { showStatus('genStatus', 'JD를 입력해주세요', 'err'); return; }
@@ -516,12 +546,16 @@
         const res = await fetch('/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ career_ops_file: baseFile || null, jd_text: jd, direction: direction || null, preserve_current: preserveCurrent, current_html: window.currentResumeHtml || null })
+          body: JSON.stringify({ career_ops_file: baseFile || null, jd_text: jd, direction: direction || null, preserve_current: preserveCurrent, current_html: window.currentResumeHtml || null, llm_mode: llmMode })
         });
         const data = await parseJsonResponse(res);
         if (data.error) { showStatus('genStatus', data.error, 'err'); return; }
         const savedName = data.saved_filename || data.filename;
         showStatus('genStatus', `생성 완료 — ${savedName}`, 'ok');
+        if (data.llm_mode) {
+          const sel = document.getElementById('llmModeSelect');
+          if (sel) sel.value = data.llm_mode;
+        }
         document.getElementById('saveFilename').value = savedName.replace(/\.html$/i, '');
         openModal(data.html, savedName.replace(/\.html$/i, ''));
         window.currentResumeHtml = data.html;

@@ -48,6 +48,8 @@ OPENROUTER_MODEL = "openai/gpt-4o-mini"  # 더 저렴하고 빠름
 HTTP_TIMEOUT = 90.0
 http_client = httpx.Client(timeout=HTTP_TIMEOUT)
 
+LLM_MODE = os.getenv("LLM_MODE", "ats")  # ats | career_ops
+
 # ── fixed JSON schema ────────────────────────────────────────────────
 
 RESUME_SCHEMA = {
@@ -60,7 +62,7 @@ RESUME_SCHEMA = {
 
 # ── fixed prompt templates ───────────────────────────────────────────
 
-REWRITE_PROMPT = """You are a professional resume writer. Your task is to make the provided resume more relevant to the target job while maintaining honesty and authenticity.
+ATS_REWRITE_PROMPT = """You are a professional resume writer. Your task is to make the provided resume more relevant to the target job while maintaining honesty and authenticity.
 
 ## CORE PRINCIPLE:
 **Preserve the actual experience and achievements. Only reframe language and emphasis to highlight genuine relevance to the target role.**
@@ -164,6 +166,59 @@ SOURCE DETAIL AND BULLET DEPTH GUIDANCE:
 ---
 
 Now adapt the resume to the target role while keeping all facts and achievements exactly as they are. Change only the framing and language. JSON only."""
+
+CAREER_OPS_REWRITE_PROMPT = """You are generating a Career-Ops style ATS resume from the provided resume data and job description.
+
+## CORE PRINCIPLES
+- Preserve truthfulness: never invent experience, metrics, or scope.
+- Optimize for ATS parsing and recruiter readability.
+- Keep the top section concise, direct, and keyword-rich.
+- Mirror the job description only where facts support it.
+- Prefer concrete nouns and verbs over polished consulting language.
+- Keep bullets distinct; do not repeat the same point.
+
+## STRUCTURE
+1. Professional Summary: 2-3 sentences max.
+2. Experience: order by role relevance; most relevant role first.
+3. Skills: only skills the candidate actually has and that match the JD.
+
+## ATS WRITING RULES
+- Use the JD keywords that are supported by the source resume.
+- Preserve all numbers, timelines, employer names, and titles unless honestly reframed.
+- For operations roles, prioritize monitoring, reconciliation, verification, escalation, support coordination, reporting, SOPs, and process control.
+- For management roles, emphasize ownership, coordination, stakeholder alignment, and risk management.
+- Avoid vague hype words like "passionate", "innovative", "world-class", "synergy", or "cutting-edge".
+- Use plain HTML-safe text only.
+
+## OUTPUT FORMAT (JSON ONLY - no markdown)
+{{
+  "name": "string",
+  "title": "string",
+  "summary": "string",
+  "experience": [
+    {{"company": "string", "role": "string", "period": "string", "bullets": ["..."]}}
+  ],
+  "skills": ["..."]
+}}
+
+## CONTEXT
+
+TARGET JOB:
+{jd}
+
+RESUME DATA:
+{resume}
+
+PREFERRED ROLE LABEL:
+{preferred_title}
+
+JD KEYWORDS:
+{jd_keywords}
+
+ROLE GUIDANCE:
+{role_guidance}
+
+Now rewrite the resume in Career-Ops ATS style. JSON only."""
 
 JD_STOPWORDS = {
     "and", "or", "the", "a", "an", "to", "with", "for", "of", "in", "across", "between",
@@ -1031,7 +1086,14 @@ GENERAL: {sections.get('general') or '(none)'}
 """
 
 
-def rewrite_html_for_jd(html_content: str, jd: str, jd_keywords: list[str], preferred_title: str, direction: str = "") -> str:
+def rewrite_html_for_jd(
+    html_content: str,
+    jd: str,
+    jd_keywords: list[str],
+    preferred_title: str,
+    direction: str = "",
+    llm_mode: str = "ats",
+) -> str:
     """career-ops HTML 포맷을 유지하면서 JD에 맞게 재작성 → HTML 반환
 
     <style> 블록을 제거해 토큰을 줄이고, LLM 응답에 원본 스타일을 다시 삽입한다.
@@ -1040,6 +1102,12 @@ def rewrite_html_for_jd(html_content: str, jd: str, jd_keywords: list[str], pref
     stripped_html = re.sub(r"<style[^>]*>[\s\S]*?</style>", "", html_content, flags=re.IGNORECASE)
     sections = split_html_sections(stripped_html)
     dir_map = parse_direction_sections(normalize_direction_text(direction))
+    template_mode = llm_mode if llm_mode in {"ats", "career_ops"} else LLM_MODE
+    mode_guidance = (
+        "Career-Ops ATS mode: keep text concise, keyword-rich, recruiter-readable, and operationally direct."
+        if template_mode == "career_ops"
+        else "General ATS mode: preserve the existing detail depth while aligning wording honestly to the job description."
+    )
 
     rewritten_sections = {}
     for section_name in ("summary", "experience", "skills"):
@@ -1056,6 +1124,9 @@ def rewrite_html_for_jd(html_content: str, jd: str, jd_keywords: list[str], pref
 - Do not change tags, classes, or surrounding document structure.
 - Follow the user direction for this section.
 - Keep facts, metrics, employers, dates, and achievements unchanged.
+
+## WRITING MODE
+{mode_guidance}
 
 ## SECTION DIRECTION
 {section_direction or '(none)'}
@@ -1114,7 +1185,14 @@ def rewrite_html_for_jd(html_content: str, jd: str, jd_keywords: list[str], pref
     return content
 
 
-def rewrite_for_jd(raw_text: str, structured: dict, jd: str, jd_keywords: list[str], preferred_title: str) -> dict:
+def rewrite_for_jd(
+    raw_text: str,
+    structured: dict,
+    jd: str,
+    jd_keywords: list[str],
+    preferred_title: str,
+    llm_mode: str = "ats",
+) -> dict:
     """JD에 맞게 이력서 재작성 → JSON 반환"""
     resume_str = json.dumps(structured, ensure_ascii=False)
     if raw_text:
@@ -1124,8 +1202,10 @@ def rewrite_for_jd(raw_text: str, structured: dict, jd: str, jd_keywords: list[s
     role_guidance = build_role_guidance(structured, jd_keywords)
     role_label = preferred_title or "Wallet Specialist"
 
+    template_mode = llm_mode if llm_mode in {"ats", "career_ops"} else LLM_MODE
+    template = CAREER_OPS_REWRITE_PROMPT if template_mode == "career_ops" else ATS_REWRITE_PROMPT
     prompt = (
-        REWRITE_PROMPT.replace("{resume}", resume_str)
+        template.replace("{resume}", resume_str)
         .replace("{jd}", jd)
         .replace("{jd_keywords}", format_keywords_for_prompt(jd_keywords))
         .replace("{preferred_title}", role_label)
@@ -1359,6 +1439,9 @@ def generate():
     jd = body.get("jd_text", "").strip()
     direction = (body.get("direction") or "").strip()
     preserve_current = body.get("preserve_current", False)
+    llm_mode = (body.get("llm_mode") or LLM_MODE or "ats").strip().lower()
+    if llm_mode not in {"ats", "career_ops"}:
+        llm_mode = LLM_MODE if LLM_MODE in {"ats", "career_ops"} else "ats"
 
     # [1] 베이스 이력서 로드 (career-ops HTML 우선, 없으면 JSON 샘플 fallback)
     raw_text = ""
@@ -1431,10 +1514,10 @@ def generate():
     try:
         if career_ops_file:
             # career-ops HTML 포맷 유지: HTML → HTML 리라이트
-            html = rewrite_html_for_jd(html_content, jd, jd_keywords, preferred_title, direction)
+            html = rewrite_html_for_jd(html_content, jd, jd_keywords, preferred_title, direction, llm_mode)
             log.info("[4] HTML rewrite done (format preserved)")
         else:
-            rewritten = rewrite_for_jd(raw_text, sample, jd, jd_keywords, preferred_title)
+            rewritten = rewrite_for_jd(raw_text, sample, jd, jd_keywords, preferred_title, llm_mode)
             # [4.5] 샘플의 연락처 정보 병합
             rewritten["contact"] = sample.get("contact", {})
             rewritten["location"] = sample.get("location", "")
@@ -1488,6 +1571,7 @@ def generate():
         "saved_filename": html_path.name,
         "pdf_path": f"{filename}.pdf",
         "sample": sample_name,
+        "llm_mode": llm_mode,
     })
 
 
@@ -1527,15 +1611,23 @@ def _career_ops_sorted() -> list[dict]:
     """career-ops HTML 파일 목록을 수정시간 기준 내림차순으로 반환"""
     if not CAREER_OPS_HTML_DIR.exists():
         return []
-    date_re = re.compile(r"(\d{4}-\d{2}-\d{2})")
+    date_re = re.compile(r"(\d{4})[-_](\d{2})[-_](\d{2})")
+    date_re_compact = re.compile(r"(\d{4})(\d{2})(\d{2})")
     items = []
     for p in CAREER_OPS_HTML_DIR.glob("*.html"):
-        m = date_re.search(p.stem)
-        date_str = m.group(1) if m else "0000-00-00"
-        display_name = date_re.sub("", p.stem).strip("-").strip("_").strip()
         stat = p.stat()
-        mtime = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
-        items.append({"filename": p.name, "mtime": stat.st_mtime, "display": f"[{mtime}] {display_name}"})
+        m = date_re.search(p.stem) or date_re_compact.search(p.stem)
+        if m:
+            date_str = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+            display_name = date_re.sub("", p.stem)
+            display_name = date_re_compact.sub("", display_name)
+        else:
+            dt = datetime.fromtimestamp(stat.st_mtime)
+            date_str = dt.strftime("%Y-%m-%d")
+            display_name = p.stem
+        display_name = display_name.strip("-").strip("_").strip()
+        mtime = datetime.fromtimestamp(stat.st_mtime).strftime("%H:%M")
+        items.append({"filename": p.name, "mtime": stat.st_mtime, "display": f"[{date_str} {mtime}] {display_name}"})
     items.sort(key=lambda x: x["mtime"], reverse=True)
     return [{k: v for k, v in item.items() if k != "mtime"} for item in items]
 
