@@ -46,7 +46,6 @@ LOGS_DIR.mkdir(exist_ok=True)
 # - "anthropic/claude-3-haiku" (가장 저렴)
 OPENROUTER_MODEL = "openai/gpt-4o-mini"  # 더 저렴하고 빠름
 HTTP_TIMEOUT = 90.0
-http_client = httpx.Client(timeout=HTTP_TIMEOUT)
 
 LLM_MODE = os.getenv("LLM_MODE", "ats")  # ats | career_ops
 
@@ -899,7 +898,7 @@ def call_deepseek(prompt: str) -> dict:
     for attempt in range(max_retries):
         try:
             log.info("[llm] OpenRouter request start — model=%s chars=%s", OPENROUTER_MODEL, len(prompt))
-            response = http_client.post(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
+            response = httpx.post(url, json=payload, headers=headers, timeout=HTTP_TIMEOUT)
             if response.status_code == 429:
                 wait_time = min(2 ** attempt, 30)  # 지수 백오프: 1초, 2초, 4초...
                 if attempt < max_retries - 1:
