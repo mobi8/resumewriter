@@ -3,6 +3,7 @@ import logging
 import re
 import os
 import time
+import tempfile
 from collections import Counter
 from datetime import datetime
 from io import BytesIO
@@ -1441,33 +1442,34 @@ def download_pdf():
         return jsonify({"error": "HTML 콘텐츠가 제공되어야 합니다."}), 400
     html = strip_pasted_font_styles(html)
 
-    # career-ops 디렉토리에 임시 HTML 저장 → 로컬 폰트 경로 해소
+    # 임시 HTML을 파일 URL로 열어 로컬 폰트/상대 경로를 해소한다.
     safe_stem = re.sub(r"[^\w\-]", "-", filename)
-    tmp_html = CAREER_OPS_HTML_DIR / f"_tmp_{safe_stem}.html"
+    tmp_html = Path(tempfile.gettempdir()) / f"resume_pdf_{safe_stem}_{int(time.time())}.html"
+    browser = None
     try:
-        if CAREER_OPS_HTML_DIR.exists():
-            tmp_html.write_text(html, encoding="utf-8")
-            load_url = tmp_html.as_uri()
-        else:
-            tmp_html = None
-            load_url = None
+        tmp_html.write_text(html, encoding="utf-8")
+        load_url = tmp_html.as_uri()
 
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
-            if load_url:
-                page.goto(load_url, wait_until="load")
-            else:
-                page.set_content(html, wait_until="load")
+            page.set_default_timeout(30_000)
+            page.goto(load_url, wait_until="domcontentloaded", timeout=30_000)
+            page.emulate_media(media="print")
             pdf_bytes = page.pdf(
                 format="A4",
                 margin={"top": "18mm", "bottom": "18mm", "left": "18mm", "right": "18mm"},
+                print_background=True,
             )
-            browser.close()
     except Exception as exc:
         log.error("PDF 생성 실패", exc_info=exc)
-        return jsonify({"error": "PDF 생성 중 오류가 발생했습니다. 로그를 확인하세요."}), 500
+        return jsonify({"error": f"PDF 생성 중 오류가 발생했습니다: {exc}"}), 500
     finally:
+        if browser:
+            try:
+                browser.close()
+            except Exception:
+                pass
         if tmp_html and tmp_html.exists():
             tmp_html.unlink(missing_ok=True)
 
@@ -1680,6 +1682,8 @@ def _career_ops_sorted() -> list[dict]:
     date_re_compact = re.compile(r"(\d{4})(\d{2})(\d{2})")
     items = []
     for p in CAREER_OPS_HTML_DIR.glob("*.html"):
+        if p.name.startswith("_tmp_"):
+            continue
         stat = p.stat()
         m = date_re.search(p.stem) or date_re_compact.search(p.stem)
         if m:

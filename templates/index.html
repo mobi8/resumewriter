@@ -532,7 +532,7 @@
       } catch (e) { showStatus('modalSaveStatus', '오류: ' + e.message, 'err'); }
     }
 
-    function savePdf() {
+    async function savePdf() {
       const pdfBtn = [...document.querySelectorAll('.modal-btn')].find(b => b.textContent.includes('PDF'));
       try {
         const iframeWindow = resumeFrame.contentWindow;
@@ -548,32 +548,39 @@
         editBtn.textContent = '✏️ 편집 모드';
         editBtn.classList.remove('primary');
         const htmlContent = doc.documentElement.outerHTML;
-        const filename = window.currentResumeFilename || 'resume';
+        const filename = (window.currentResumeFilename || 'resume').replace(/\.html$/i, '');
         if (pdfBtn) { pdfBtn.textContent = '⏳ 생성 중...'; pdfBtn.disabled = true; }
-        fetch('/download-pdf', {
+        showStatus('modalSaveStatus', 'PDF 생성 중...', 'loading');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
+        const res = await fetch('/download-pdf', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: htmlContent, filename })
-        })
-        .then(async res => {
-          if (!res.ok) {
-            let msg = `PDF 생성 실패 (${res.status})`;
-            try { const p = await res.json(); if (p?.error) msg = p.error; } catch (_) {}
-            throw new Error(msg);
-          }
-          return res.blob();
-        })
-        .then(blob => {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = `${filename}.pdf`;
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        })
-        .catch(e => alert('PDF 저장 실패: ' + e.message))
-        .finally(() => { if (pdfBtn) { pdfBtn.textContent = '⬇️ PDF 다운로드'; pdfBtn.disabled = false; } });
+          body: JSON.stringify({ html: htmlContent, filename }),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (!res.ok) {
+          let msg = `PDF 생성 실패 (${res.status})`;
+          try { const p = await res.json(); if (p?.error) msg = p.error; } catch (_) {}
+          throw new Error(msg);
+        }
+        const blob = await res.blob();
+        if (!blob.size) throw new Error('빈 PDF 응답을 받았습니다.');
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filename}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        showStatus('modalSaveStatus', `PDF 생성 완료: ${filename}.pdf`, 'ok');
       } catch (e) {
-        alert('PDF 저장 오류: ' + e.message);
+        const msg = e.name === 'AbortError' ? 'PDF 생성 시간이 초과되었습니다.' : e.message;
+        showStatus('modalSaveStatus', 'PDF 저장 실패: ' + msg, 'err');
+        alert('PDF 저장 실패: ' + msg);
+      } finally {
         if (pdfBtn) { pdfBtn.textContent = '⬇️ PDF 다운로드'; pdfBtn.disabled = false; }
       }
     }
