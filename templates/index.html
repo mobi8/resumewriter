@@ -371,6 +371,7 @@
       window.currentResumeFilename = filename || 'resume';
       window.currentResumeHtml = html;
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      resumeFrame.onload = () => installResumeEditorGuards();
       resumeFrame.src = URL.createObjectURL(blob);
       modalOverlay.classList.add('show');
       isEditingMode = false;
@@ -378,6 +379,84 @@
       editBtn.classList.remove('primary');
       const sfEl = document.getElementById('saveFilename');
       if (sfEl && !sfEl.value) sfEl.value = filename || '';
+    }
+
+    function installResumeEditorGuards() {
+      const doc = resumeFrame.contentDocument;
+      if (!doc || !doc.body) return;
+
+      if (!doc.getElementById('resumeEditorFontGuard')) {
+        const style = doc.createElement('style');
+        style.id = 'resumeEditorFontGuard';
+        style.textContent = `
+          body * {
+            font-family: inherit !important;
+          }
+        `;
+        doc.head.appendChild(style);
+      }
+
+      if (doc.body.dataset.pasteHandlerInstalled === 'true') return;
+      doc.body.dataset.pasteHandlerInstalled = 'true';
+      doc.body.addEventListener('paste', handleResumePaste);
+    }
+
+    function handleResumePaste(event) {
+      event.preventDefault();
+      const doc = event.currentTarget.ownerDocument;
+      const clipboard = event.clipboardData || window.clipboardData;
+      const html = clipboard?.getData('text/html');
+      const text = clipboard?.getData('text/plain') || '';
+      const fragment = html ? sanitizePastedHtml(doc, html) : plainTextToFragment(doc, text);
+      insertFragmentAtSelection(doc, fragment);
+    }
+
+    function sanitizePastedHtml(doc, html) {
+      const template = doc.createElement('template');
+      template.innerHTML = html;
+      template.content.querySelectorAll('*').forEach(el => {
+        if (el.hasAttribute('style')) {
+          const kept = el.getAttribute('style')
+            .split(';')
+            .map(rule => rule.trim())
+            .filter(rule => rule && !/^(font-family|font-size|font|line-height)\s*:/i.test(rule))
+            .join('; ');
+          if (kept) el.setAttribute('style', kept);
+          else el.removeAttribute('style');
+        }
+        if (el.tagName === 'FONT') {
+          el.removeAttribute('face');
+          el.removeAttribute('size');
+        }
+      });
+      return template.content;
+    }
+
+    function plainTextToFragment(doc, text) {
+      const fragment = doc.createDocumentFragment();
+      text.split(/\r?\n/).forEach((line, index) => {
+        if (index > 0) fragment.appendChild(doc.createElement('br'));
+        fragment.appendChild(doc.createTextNode(line));
+      });
+      return fragment;
+    }
+
+    function insertFragmentAtSelection(doc, fragment) {
+      const selection = doc.getSelection();
+      if (!selection || selection.rangeCount === 0) {
+        doc.body.appendChild(fragment);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      const lastNode = fragment.lastChild;
+      range.insertNode(fragment);
+      if (lastNode) {
+        range.setStartAfter(lastNode);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
     }
 
     function closeModal() {
@@ -402,6 +481,7 @@
         isEditingMode = !isEditingMode;
         const body = doc.body;
         if (isEditingMode) {
+          installResumeEditorGuards();
           body.contentEditable = 'true';
           body.style.outline = '2px dashed #3498db';
           editBtn.textContent = '✅ 완료';

@@ -781,6 +781,37 @@ def extract_role_label(jd_text: str) -> str:
         return candidate
     return ""
 
+
+def strip_pasted_font_styles(html: str) -> str:
+    """Remove font styles introduced by rich-text paste while keeping resume layout CSS."""
+    if not html:
+        return html
+
+    html = re.sub(
+        r"""(?is)<style\b[^>]*\bid=["']resumeEditorFontGuard["'][^>]*>.*?</style>""",
+        "",
+        html,
+    )
+
+    def clean_style_attr(match: re.Match) -> str:
+        quote = match.group(1)
+        style = match.group(2)
+        kept_rules = []
+        for rule in style.split(";"):
+            if ":" not in rule:
+                continue
+            prop, value = rule.split(":", 1)
+            prop_name = prop.strip().lower()
+            if prop_name in {"font", "font-family", "font-size", "line-height"}:
+                continue
+            kept_rules.append(f"{prop.strip()}: {value.strip()}")
+        return f' style={quote}{"; ".join(kept_rules)}{quote}' if kept_rules else ""
+
+    html = re.sub(r"""\sstyle=(["'])(.*?)\1""", clean_style_attr, html, flags=re.IGNORECASE | re.DOTALL)
+    html = re.sub(r"""\s(?:face|size)=(?:"[^"]*"|'[^']*'|[^\s>]+)""", "", html, flags=re.IGNORECASE)
+    return html
+
+
 # ── HTML template for PDF ────────────────────────────────────────────
 
 RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
@@ -1409,6 +1440,7 @@ def download_pdf():
 
     if not html:
         return jsonify({"error": "HTML 콘텐츠가 제공되어야 합니다."}), 400
+    html = strip_pasted_font_styles(html)
 
     # career-ops 디렉토리에 임시 HTML 저장 → 로컬 폰트 경로 해소
     safe_stem = re.sub(r"[^\w\-]", "-", filename)
@@ -1716,6 +1748,7 @@ def career_ops_save():
         return jsonify({"error": "HTML 내용이 없습니다"}), 400
     if not name:
         return jsonify({"error": "파일명을 입력해주세요"}), 400
+    html = strip_pasted_font_styles(html)
 
     # 확장자 / 경로 정규화
     safe_name = re.sub(r"[^\w\-.]", "-", Path(name).stem) + ".html"
