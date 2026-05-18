@@ -4,17 +4,14 @@ import re
 import os
 import time
 import tempfile
+import threading
 from collections import Counter
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
-import httpx
-import pdfplumber
 from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
-from fpdf import FPDF
 from flask import Flask, request, render_template, send_file, jsonify
-from playwright.sync_api import sync_playwright
 from werkzeug.exceptions import RequestEntityTooLarge
 
 # ── logging ──────────────────────────────────────────────────────────
@@ -31,6 +28,10 @@ log = logging.getLogger("resume")
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
+PDF_LOCK = threading.Lock()
+PDF_PLAYWRIGHT = None
+PDF_BROWSER = None
+
 BASE = Path(__file__).parent
 SAMPLES_DIR = BASE / "resumes"  # 샘플 이력서 저장
 OUTPUTS_DIR = BASE / "outputs"
@@ -39,6 +40,32 @@ CAREER_OPS_HTML_DIR = Path("/Users/lewis/Desktop/career/career-ops/output/html")
 SAMPLES_DIR.mkdir(exist_ok=True)
 OUTPUTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
+
+
+def get_pdf_browser():
+    """Return a warmed Chromium instance for PDF generation."""
+    global PDF_PLAYWRIGHT, PDF_BROWSER
+    with PDF_LOCK:
+        if PDF_BROWSER:
+            try:
+                if PDF_BROWSER.is_connected():
+                    return PDF_BROWSER
+            except Exception:
+                PDF_BROWSER = None
+        from playwright.sync_api import sync_playwright
+
+        if PDF_PLAYWRIGHT is None:
+            PDF_PLAYWRIGHT = sync_playwright().start()
+        PDF_BROWSER = PDF_PLAYWRIGHT.chromium.launch(headless=True)
+        return PDF_BROWSER
+
+
+def warm_pdf_browser():
+    try:
+        get_pdf_browser()
+        log.info("[pdf] chromium warmed")
+    except Exception:
+        log.warning("[pdf] chromium warmup failed", exc_info=True)
 
 # OpenRouter 설정 (더 저렴한 모델로 변경 가능)
 # 사용 가능한 모델:
@@ -884,6 +911,8 @@ RESUME_HTML_TEMPLATE = """<!DOCTYPE html>
 
 def call_deepseek(prompt: str) -> dict:
     """OpenRouter API 호출 (429 재시도 로직 포함)"""
+    import httpx
+
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OpenRouter API key is not configured")
 
@@ -929,6 +958,8 @@ def call_deepseek(prompt: str) -> dict:
 
 def parse_pdf(file) -> str:
     """PDF에서 텍스트 추출 (fallback: 빈 텍스트도 raw로 저장)"""
+    import pdfplumber
+
     text = ""
     try:
         with pdfplumber.open(file) as pdf:
@@ -1437,6 +1468,7 @@ def download_pdf():
     payload = request.json or {}
     html = payload.get("html")
     filename = (payload.get("filename") or "resume").strip() or "resume"
+    wants_json = bool(payload.get("json_response"))
 
     if not html:
         return jsonify({"error": "HTML 콘텐츠가 제공되어야 합니다."}), 400
@@ -1445,39 +1477,43 @@ def download_pdf():
     # 임시 HTML을 파일 URL로 열어 로컬 폰트/상대 경로를 해소한다.
     safe_stem = re.sub(r"[^\w\-]", "-", filename)
     tmp_html = Path(tempfile.gettempdir()) / f"resume_pdf_{safe_stem}_{int(time.time())}.html"
-    browser = None
+    page = None
     try:
         tmp_html.write_text(html, encoding="utf-8")
         load_url = tmp_html.as_uri()
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.set_default_timeout(30_000)
-            page.goto(load_url, wait_until="domcontentloaded", timeout=30_000)
-            page.emulate_media(media="print")
-            pdf_bytes = page.pdf(
-                format="A4",
-                margin={"top": "18mm", "bottom": "18mm", "left": "18mm", "right": "18mm"},
-                print_background=True,
-            )
+        browser = get_pdf_browser()
+        page = browser.new_page()
+        page.set_default_timeout(30_000)
+        page.goto(load_url, wait_until="domcontentloaded", timeout=30_000)
+        page.emulate_media(media="print")
+        pdf_bytes = page.pdf(
+            format="A4",
+            margin={"top": "18mm", "bottom": "18mm", "left": "18mm", "right": "18mm"},
+            print_background=True,
+        )
     except Exception as exc:
         log.error("PDF 생성 실패", exc_info=exc)
         return jsonify({"error": f"PDF 생성 중 오류가 발생했습니다: {exc}"}), 500
     finally:
-        if browser:
+        if page:
             try:
-                browser.close()
+                page.close()
             except Exception:
                 pass
         if tmp_html and tmp_html.exists():
             tmp_html.unlink(missing_ok=True)
 
-    # career-ops 폴더에 PDF 저장
+    pdf_path = None
     if CAREER_OPS_HTML_DIR.exists():
         pdf_path = CAREER_OPS_HTML_DIR / f"{safe_stem}.pdf"
         pdf_path.write_bytes(pdf_bytes)
         log.info(f"[pdf] saved → {pdf_path.name}")
+
+    if wants_json:
+        if not pdf_path:
+            return jsonify({"error": "PDF 저장 디렉토리가 없습니다."}), 500
+        return jsonify({"ok": True, "filename": pdf_path.name, "pdf_url": f"/career-ops/pdf/{pdf_path.name}"})
 
     buffer = BytesIO(pdf_bytes)
     buffer.seek(0)
@@ -1578,6 +1614,8 @@ def generate():
     preferred_title = extract_role_label(jd)
 
     # [4] LLM으로 베이스 이력서 + JD → 재작성
+    import httpx
+
     try:
         if career_ops_file:
             # career-ops HTML 포맷 유지: HTML → HTML 리라이트
@@ -1740,6 +1778,16 @@ def career_ops_open(filename):
     return jsonify({"html": html, "filename": path.stem})
 
 
+@app.route("/career-ops/pdf/<path:filename>")
+def career_ops_pdf(filename):
+    """저장된 career-ops PDF 다운로드"""
+    safe_name = Path(filename).name
+    path = CAREER_OPS_HTML_DIR / safe_name
+    if not path.exists() or path.suffix.lower() != ".pdf":
+        return jsonify({"error": "PDF 파일을 찾을 수 없습니다"}), 404
+    return send_file(path, as_attachment=True, download_name=safe_name, mimetype="application/pdf")
+
+
 @app.route("/career-ops/save", methods=["POST"])
 def career_ops_save():
     """편집된 HTML을 career-ops output 디렉토리에 저장"""
@@ -1773,9 +1821,11 @@ def handle_too_large(error):
 
 if __name__ == "__main__":
     debug_enabled = os.getenv("FLASK_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+    warm_pdf_browser()
     app.run(
         host=os.getenv("FLASK_HOST", "127.0.0.1"),
         port=int(os.getenv("FLASK_PORT", "8080")),
         debug=debug_enabled,
         use_reloader=False,
+        threaded=False,
     )

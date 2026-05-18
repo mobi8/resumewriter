@@ -556,7 +556,7 @@
         const res = await fetch('/download-pdf', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: htmlContent, filename }),
+          body: JSON.stringify({ html: htmlContent, filename, json_response: true }),
           signal: controller.signal
         });
         clearTimeout(timeoutId);
@@ -565,17 +565,15 @@
           try { const p = await res.json(); if (p?.error) msg = p.error; } catch (_) {}
           throw new Error(msg);
         }
-        const blob = await res.blob();
-        if (!blob.size) throw new Error('빈 PDF 응답을 받았습니다.');
-        const url = URL.createObjectURL(blob);
+        const data = await res.json();
+        if (!data?.pdf_url) throw new Error('PDF 다운로드 링크를 받지 못했습니다.');
         const a = document.createElement('a');
-        a.href = url;
-        a.download = `${filename}.pdf`;
+        a.href = data.pdf_url;
+        a.download = data.filename || `${filename}.pdf`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-        showStatus('modalSaveStatus', `PDF 생성 완료: ${filename}.pdf`, 'ok');
+        showStatus('modalSaveStatus', `PDF 생성 완료: ${data.filename || `${filename}.pdf`}`, 'ok');
       } catch (e) {
         const msg = e.name === 'AbortError' ? 'PDF 생성 시간이 초과되었습니다.' : e.message;
         showStatus('modalSaveStatus', 'PDF 저장 실패: ' + msg, 'err');

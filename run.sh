@@ -39,8 +39,13 @@ echo "python path: $("$PYTHON" -c 'import sys; print(sys.executable)')"
 # pip 버전 경고를 억제
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# 의존성 설치 (핵심 패키지 import 가능하면 스킵)
-if "$PYTHON" -c "import flask, pdfplumber, httpx, playwright, fpdf" 2>/dev/null; then
+# 의존성 설치 (무거운 import 대신 패키지 존재 여부만 확인)
+if "$PYTHON" - <<'PY' 2>/dev/null
+import importlib.util
+missing = [name for name in ("flask", "pdfplumber", "httpx", "playwright", "fpdf") if importlib.util.find_spec(name) is None]
+raise SystemExit(1 if missing else 0)
+PY
+then
   echo "✓ 의존성 최신 상태"
 else
   echo "의존성 설치 중... (최초 1회만 실행됩니다)"
