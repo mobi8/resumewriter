@@ -1821,7 +1821,7 @@ def handle_too_large(error):
 
 if __name__ == "__main__":
     debug_enabled = os.getenv("FLASK_DEBUG", "").lower() in {"1", "true", "yes", "on"}
-    warm_pdf_browser()
+    threading.Thread(target=warm_pdf_browser, daemon=True).start()
     app.run(
         host=os.getenv("FLASK_HOST", "127.0.0.1"),
         port=int(os.getenv("FLASK_PORT", "8080")),
