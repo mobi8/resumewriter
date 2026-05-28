@@ -1826,6 +1826,7 @@ if __name__ == "__main__":
         host=os.getenv("FLASK_HOST", "127.0.0.1"),
         port=int(os.getenv("FLASK_PORT", "8080")),
         debug=debug_enabled,
+        load_dotenv=False,
         use_reloader=False,
         threaded=False,
     )
