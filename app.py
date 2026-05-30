@@ -29,8 +29,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 PDF_LOCK = threading.Lock()
-PDF_PLAYWRIGHT = None
-PDF_BROWSER = None
+PDF_THREAD_LOCAL = threading.local()
 
 BASE = Path(__file__).parent
 SAMPLES_DIR = BASE / "resumes"  # 샘플 이력서 저장
@@ -43,21 +42,24 @@ LOGS_DIR.mkdir(exist_ok=True)
 
 
 def get_pdf_browser():
-    """Return a warmed Chromium instance for PDF generation."""
-    global PDF_PLAYWRIGHT, PDF_BROWSER
+    """Return a Chromium instance owned by the current thread."""
+    playwright = getattr(PDF_THREAD_LOCAL, "playwright", None)
+    browser = getattr(PDF_THREAD_LOCAL, "browser", None)
     with PDF_LOCK:
-        if PDF_BROWSER:
+        if browser:
             try:
-                if PDF_BROWSER.is_connected():
-                    return PDF_BROWSER
+                if browser.is_connected():
+                    return browser
             except Exception:
-                PDF_BROWSER = None
+                PDF_THREAD_LOCAL.browser = None
         from playwright.sync_api import sync_playwright
 
-        if PDF_PLAYWRIGHT is None:
-            PDF_PLAYWRIGHT = sync_playwright().start()
-        PDF_BROWSER = PDF_PLAYWRIGHT.chromium.launch(headless=True)
-        return PDF_BROWSER
+        if playwright is None:
+            playwright = sync_playwright().start()
+            PDF_THREAD_LOCAL.playwright = playwright
+        browser = playwright.chromium.launch(headless=True)
+        PDF_THREAD_LOCAL.browser = browser
+        return browser
 
 
 def warm_pdf_browser():
@@ -1821,7 +1823,6 @@ def handle_too_large(error):
 
 if __name__ == "__main__":
     debug_enabled = os.getenv("FLASK_DEBUG", "").lower() in {"1", "true", "yes", "on"}
-    threading.Thread(target=warm_pdf_browser, daemon=True).start()
     app.run(
         host=os.getenv("FLASK_HOST", "127.0.0.1"),
         port=int(os.getenv("FLASK_PORT", "8080")),
