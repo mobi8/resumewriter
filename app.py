@@ -6,6 +6,7 @@ import time
 import tempfile
 import threading
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -28,8 +29,11 @@ log = logging.getLogger("resume")
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
-PDF_LOCK = threading.Lock()
-PDF_THREAD_LOCAL = threading.local()
+# Single-thread executor owns all Playwright state — sync API is greenlet-bound
+# to the thread that created it, so we must never switch threads.
+_PDF_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pdf-worker")
+_PDF_PLAYWRIGHT = None
+_PDF_BROWSER = None
 
 BASE = Path(__file__).parent
 SAMPLES_DIR = BASE / "resumes"  # 샘플 이력서 저장
@@ -41,30 +45,63 @@ OUTPUTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
 
-def get_pdf_browser():
-    """Return a Chromium instance owned by the current thread."""
-    playwright = getattr(PDF_THREAD_LOCAL, "playwright", None)
-    browser = getattr(PDF_THREAD_LOCAL, "browser", None)
-    with PDF_LOCK:
-        if browser:
-            try:
-                if browser.is_connected():
-                    return browser
-            except Exception:
-                PDF_THREAD_LOCAL.browser = None
-        from playwright.sync_api import sync_playwright
+def _get_pdf_browser():
+    """Return the singleton browser. Must only be called from within _PDF_EXECUTOR."""
+    global _PDF_PLAYWRIGHT, _PDF_BROWSER
+    if _PDF_BROWSER is not None:
+        try:
+            if _PDF_BROWSER.is_connected():
+                return _PDF_BROWSER
+        except Exception:
+            _PDF_BROWSER = None
+    from playwright.sync_api import sync_playwright
 
-        if playwright is None:
-            playwright = sync_playwright().start()
-            PDF_THREAD_LOCAL.playwright = playwright
-        browser = playwright.chromium.launch(headless=True)
-        PDF_THREAD_LOCAL.browser = browser
-        return browser
+    t0 = time.monotonic()
+    if _PDF_PLAYWRIGHT is None:
+        _PDF_PLAYWRIGHT = sync_playwright().start()
+    _PDF_BROWSER = _PDF_PLAYWRIGHT.chromium.launch(headless=True)
+    log.info("[pdf] browser launched in %.1fs", time.monotonic() - t0)
+    return _PDF_BROWSER
+
+
+def _generate_pdf_bytes_on_worker(html: str, safe_stem: str) -> bytes:
+    """Entire Playwright session runs here so it stays on the executor's single thread."""
+    tmp_html = Path(tempfile.gettempdir()) / f"resume_pdf_{safe_stem}_{int(time.time())}.html"
+    tmp_html.write_text(html, encoding="utf-8")
+    load_url = tmp_html.as_uri()
+
+    t_start = time.monotonic()
+    browser = _get_pdf_browser()
+    log.info("[pdf] browser ready (%.2fs)", time.monotonic() - t_start)
+
+    page = browser.new_page()
+    page.set_default_timeout(30_000)
+    try:
+        log.info("[pdf] loading HTML file %s", load_url)
+        page.goto(load_url, wait_until="domcontentloaded", timeout=30_000)
+        log.info("[pdf] HTML content set")
+        page.emulate_media(media="print")
+        t_render = time.monotonic()
+        log.info("[pdf] generating PDF")
+        pdf_bytes = page.pdf(
+            format="A4",
+            margin={"top": "18mm", "bottom": "18mm", "left": "18mm", "right": "18mm"},
+            print_background=True,
+        )
+        log.info("[pdf] generated %s bytes in %.2fs (total %.2fs)",
+                 len(pdf_bytes), time.monotonic() - t_render, time.monotonic() - t_start)
+        return pdf_bytes
+    finally:
+        try:
+            page.close()
+        except Exception:
+            log.warning("[pdf] page close failed", exc_info=True)
+        tmp_html.unlink(missing_ok=True)
 
 
 def warm_pdf_browser():
     try:
-        get_pdf_browser()
+        _PDF_EXECUTOR.submit(_get_pdf_browser).result(timeout=60)
         log.info("[pdf] chromium warmed")
     except Exception:
         log.warning("[pdf] chromium warmup failed", exc_info=True)
@@ -1466,7 +1503,7 @@ def extract_company_name(jd: str) -> str:
 
 @app.route("/download-pdf", methods=["POST"])
 def download_pdf():
-    """HTML을 받아 playwright로 PDF 생성 후 career-ops 폴더에 저장 + 다운로드"""
+    """HTML을 받아 Playwright로 PDF 생성 후 career-ops 폴더에 저장 + 다운로드"""
     payload = request.json or {}
     html = payload.get("html")
     filename = (payload.get("filename") or "resume").strip() or "resume"
@@ -1476,35 +1513,16 @@ def download_pdf():
         return jsonify({"error": "HTML 콘텐츠가 제공되어야 합니다."}), 400
     html = strip_pasted_font_styles(html)
 
-    # 임시 HTML을 파일 URL로 열어 로컬 폰트/상대 경로를 해소한다.
     safe_stem = re.sub(r"[^\w\-]", "-", filename)
-    tmp_html = Path(tempfile.gettempdir()) / f"resume_pdf_{safe_stem}_{int(time.time())}.html"
-    page = None
     try:
-        tmp_html.write_text(html, encoding="utf-8")
-        load_url = tmp_html.as_uri()
-
-        browser = get_pdf_browser()
-        page = browser.new_page()
-        page.set_default_timeout(30_000)
-        page.goto(load_url, wait_until="domcontentloaded", timeout=30_000)
-        page.emulate_media(media="print")
-        pdf_bytes = page.pdf(
-            format="A4",
-            margin={"top": "18mm", "bottom": "18mm", "left": "18mm", "right": "18mm"},
-            print_background=True,
-        )
+        future = _PDF_EXECUTOR.submit(_generate_pdf_bytes_on_worker, html, safe_stem)
+        pdf_bytes = future.result(timeout=45)
+    except FutureTimeoutError:
+        log.error("[pdf] generation timed out after 45s")
+        return jsonify({"error": "PDF 생성 시간이 초과되었습니다. (45s)"}), 504
     except Exception as exc:
-        log.error("PDF 생성 실패", exc_info=exc)
+        log.exception("[pdf] Playwright PDF generation failed")
         return jsonify({"error": f"PDF 생성 중 오류가 발생했습니다: {exc}"}), 500
-    finally:
-        if page:
-            try:
-                page.close()
-            except Exception:
-                pass
-        if tmp_html and tmp_html.exists():
-            tmp_html.unlink(missing_ok=True)
 
     pdf_path = None
     if CAREER_OPS_HTML_DIR.exists():
@@ -1829,5 +1847,5 @@ if __name__ == "__main__":
         debug=debug_enabled,
         load_dotenv=False,
         use_reloader=False,
-        threaded=False,
+        threaded=True,
     )

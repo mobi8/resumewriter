@@ -89,6 +89,7 @@ echo "python path: $("$PYTHON" -c 'import sys; print(sys.executable)')"
 
 # pip 버전 경고를 억제
 export PIP_DISABLE_PIP_VERSION_CHECK=1
+export PYTHONDONTWRITEBYTECODE=1
 
 # 의존성 설치 (bash find로 flask 디렉토리 존재 여부만 확인 — 0ms)
 if [ -n "$(find venv/lib -maxdepth 4 -name "flask" -type d 2>/dev/null | head -1)" ]; then
