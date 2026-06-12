@@ -4,9 +4,7 @@ import re
 import os
 import time
 import tempfile
-import threading
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -29,12 +27,6 @@ log = logging.getLogger("resume")
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
-# Single-thread executor owns all Playwright state — sync API is greenlet-bound
-# to the thread that created it, so we must never switch threads.
-_PDF_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pdf-worker")
-_PDF_PLAYWRIGHT = None
-_PDF_BROWSER = None
-
 BASE = Path(__file__).parent
 SAMPLES_DIR = BASE / "resumes"  # 샘플 이력서 저장
 OUTPUTS_DIR = BASE / "outputs"
@@ -45,38 +37,25 @@ OUTPUTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
 
-def _get_pdf_browser():
-    """Return the singleton browser. Must only be called from within _PDF_EXECUTOR."""
-    global _PDF_PLAYWRIGHT, _PDF_BROWSER
-    if _PDF_BROWSER is not None:
-        try:
-            if _PDF_BROWSER.is_connected():
-                return _PDF_BROWSER
-        except Exception:
-            _PDF_BROWSER = None
+def _generate_pdf_bytes(html: str, safe_stem: str) -> bytes:
+    """Generate one PDF with a fresh Playwright session so stale browsers cannot block later exports."""
     from playwright.sync_api import sync_playwright
 
-    t0 = time.monotonic()
-    if _PDF_PLAYWRIGHT is None:
-        _PDF_PLAYWRIGHT = sync_playwright().start()
-    _PDF_BROWSER = _PDF_PLAYWRIGHT.chromium.launch(headless=True)
-    log.info("[pdf] browser launched in %.1fs", time.monotonic() - t0)
-    return _PDF_BROWSER
-
-
-def _generate_pdf_bytes_on_worker(html: str, safe_stem: str) -> bytes:
-    """Entire Playwright session runs here so it stays on the executor's single thread."""
     tmp_html = Path(tempfile.gettempdir()) / f"resume_pdf_{safe_stem}_{int(time.time())}.html"
     tmp_html.write_text(html, encoding="utf-8")
     load_url = tmp_html.as_uri()
 
     t_start = time.monotonic()
-    browser = _get_pdf_browser()
-    log.info("[pdf] browser ready (%.2fs)", time.monotonic() - t_start)
-
-    page = browser.new_page()
-    page.set_default_timeout(30_000)
+    playwright = None
+    browser = None
+    page = None
     try:
+        playwright = sync_playwright().start()
+        browser = playwright.chromium.launch(headless=True)
+        log.info("[pdf] browser launched (%.2fs)", time.monotonic() - t_start)
+
+        page = browser.new_page()
+        page.set_default_timeout(30_000)
         log.info("[pdf] loading HTML file %s", load_url)
         page.goto(load_url, wait_until="domcontentloaded", timeout=30_000)
         log.info("[pdf] HTML content set")
@@ -92,19 +71,22 @@ def _generate_pdf_bytes_on_worker(html: str, safe_stem: str) -> bytes:
                  len(pdf_bytes), time.monotonic() - t_render, time.monotonic() - t_start)
         return pdf_bytes
     finally:
-        try:
-            page.close()
-        except Exception:
-            log.warning("[pdf] page close failed", exc_info=True)
+        if page:
+            try:
+                page.close()
+            except Exception:
+                log.warning("[pdf] page close failed", exc_info=True)
+        if browser:
+            try:
+                browser.close()
+            except Exception:
+                log.warning("[pdf] browser close failed", exc_info=True)
+        if playwright:
+            try:
+                playwright.stop()
+            except Exception:
+                log.warning("[pdf] playwright stop failed", exc_info=True)
         tmp_html.unlink(missing_ok=True)
-
-
-def warm_pdf_browser():
-    try:
-        _PDF_EXECUTOR.submit(_get_pdf_browser).result(timeout=60)
-        log.info("[pdf] chromium warmed")
-    except Exception:
-        log.warning("[pdf] chromium warmup failed", exc_info=True)
 
 # OpenRouter 설정 (더 저렴한 모델로 변경 가능)
 # 사용 가능한 모델:
@@ -1515,11 +1497,7 @@ def download_pdf():
 
     safe_stem = re.sub(r"[^\w\-]", "-", filename)
     try:
-        future = _PDF_EXECUTOR.submit(_generate_pdf_bytes_on_worker, html, safe_stem)
-        pdf_bytes = future.result(timeout=45)
-    except FutureTimeoutError:
-        log.error("[pdf] generation timed out after 45s")
-        return jsonify({"error": "PDF 생성 시간이 초과되었습니다. (45s)"}), 504
+        pdf_bytes = _generate_pdf_bytes(html, safe_stem)
     except Exception as exc:
         log.exception("[pdf] Playwright PDF generation failed")
         return jsonify({"error": f"PDF 생성 중 오류가 발생했습니다: {exc}"}), 500
