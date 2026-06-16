@@ -4,6 +4,7 @@ import re
 import os
 import time
 import tempfile
+import subprocess
 from collections import Counter
 from datetime import datetime
 from io import BytesIO
@@ -38,55 +39,26 @@ LOGS_DIR.mkdir(exist_ok=True)
 
 
 def _generate_pdf_bytes(html: str, safe_stem: str) -> bytes:
-    """Generate one PDF with a fresh Playwright session so stale browsers cannot block later exports."""
-    from playwright.sync_api import sync_playwright
-
     tmp_html = Path(tempfile.gettempdir()) / f"resume_pdf_{safe_stem}_{int(time.time())}.html"
-    tmp_html.write_text(html, encoding="utf-8")
-    load_url = tmp_html.as_uri()
+    tmp_pdf = Path(tempfile.gettempdir()) / f"resume_pdf_{safe_stem}_{int(time.time())}.pdf"
+    script_path = BASE / "scripts" / "html_to_pdf.py"
+    python_path = BASE / "venv" / "bin" / "python"
 
     t_start = time.monotonic()
-    playwright = None
-    browser = None
-    page = None
     try:
-        playwright = sync_playwright().start()
-        browser = playwright.chromium.launch(headless=True)
-        log.info("[pdf] browser launched (%.2fs)", time.monotonic() - t_start)
-
-        page = browser.new_page()
-        page.set_default_timeout(30_000)
-        log.info("[pdf] loading HTML file %s", load_url)
-        page.goto(load_url, wait_until="domcontentloaded", timeout=30_000)
-        log.info("[pdf] HTML content set")
-        page.emulate_media(media="print")
-        t_render = time.monotonic()
-        log.info("[pdf] generating PDF")
-        pdf_bytes = page.pdf(
-            format="A4",
-            margin={"top": "18mm", "bottom": "18mm", "left": "18mm", "right": "18mm"},
-            print_background=True,
+        tmp_html.write_text(html, encoding="utf-8")
+        log.info("[pdf] generating PDF via subprocess")
+        subprocess.run(
+            [str(python_path), str(script_path), str(tmp_html), str(tmp_pdf)],
+            check=True,
+            timeout=60,
         )
-        log.info("[pdf] generated %s bytes in %.2fs (total %.2fs)",
-                 len(pdf_bytes), time.monotonic() - t_render, time.monotonic() - t_start)
+        pdf_bytes = tmp_pdf.read_bytes()
+        log.info("[pdf] generated %s bytes in %.2fs", len(pdf_bytes), time.monotonic() - t_start)
         return pdf_bytes
     finally:
-        if page:
-            try:
-                page.close()
-            except Exception:
-                log.warning("[pdf] page close failed", exc_info=True)
-        if browser:
-            try:
-                browser.close()
-            except Exception:
-                log.warning("[pdf] browser close failed", exc_info=True)
-        if playwright:
-            try:
-                playwright.stop()
-            except Exception:
-                log.warning("[pdf] playwright stop failed", exc_info=True)
         tmp_html.unlink(missing_ok=True)
+        tmp_pdf.unlink(missing_ok=True)
 
 # OpenRouter 설정 (더 저렴한 모델로 변경 가능)
 # 사용 가능한 모델:
