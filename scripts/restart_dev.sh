@@ -83,6 +83,7 @@ log "Step 3/3: starting app"
 export PYTHONDONTWRITEBYTECODE=1
 export FLASK_HOST="${FLASK_HOST:-127.0.0.1}"
 export FLASK_PORT="$PORT"
+export CAREER_OPS_HTML_DIR="${CAREER_OPS_HTML_DIR:-/Users/lewis/Desktop/career/career-ops/output/html}"
 
 log "Server command: venv/bin/python -u app.py"
 exec venv/bin/python -u app.py

@@ -30,7 +30,6 @@ echo "python: $(venv/bin/python --version 2>&1)"
 
 venv/bin/python -m pip install --upgrade pip setuptools wheel
 venv/bin/python -m pip install -r requirements.txt
-venv/bin/python -m pip install --upgrade --force-reinstall playwright
 venv/bin/python -m playwright install chromium
 
 venv/bin/python -c "print('before', flush=True); from playwright.sync_api import sync_playwright; print('after import', flush=True)"

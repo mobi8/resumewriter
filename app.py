@@ -32,10 +32,38 @@ BASE = Path(__file__).parent
 SAMPLES_DIR = BASE / "resumes"  # 샘플 이력서 저장
 OUTPUTS_DIR = BASE / "outputs"
 LOGS_DIR = BASE / "logs"
-CAREER_OPS_HTML_DIR = Path("/Users/lewis/Desktop/career/career-ops/output/html")
+CAREER_OPS_HTML_DIR = Path(
+    os.getenv("CAREER_OPS_HTML_DIR", "/Users/lewis/Desktop/career/career-ops/output/html")
+).expanduser()
 SAMPLES_DIR.mkdir(exist_ok=True)
 OUTPUTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
+
+
+def _clean_process_output(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").strip()
+    return str(value).strip()
+
+
+def _last_pdf_stage(stdout: str, stderr: str) -> str:
+    stages = [
+        "worker started",
+        "playwright started",
+        "browser launched",
+        "page created",
+        "html loaded",
+        "network idle skipped",
+        "pdf generation started",
+        "pdf generation completed",
+    ]
+    combined = "\n".join(part for part in (stdout, stderr) if part)
+    for stage in reversed(stages):
+        if stage in combined:
+            return stage
+    return "unknown"
 
 
 def _generate_pdf_bytes(html: str, safe_stem: str) -> bytes:
@@ -48,11 +76,50 @@ def _generate_pdf_bytes(html: str, safe_stem: str) -> bytes:
     try:
         tmp_html.write_text(html, encoding="utf-8")
         log.info("[pdf] generating PDF via subprocess")
-        subprocess.run(
-            [str(python_path), str(script_path), str(tmp_html), str(tmp_pdf)],
-            check=True,
-            timeout=60,
-        )
+        try:
+            subprocess.run(
+                [str(python_path), str(script_path), str(tmp_html), str(tmp_pdf)],
+                check=True,
+                timeout=60,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            stdout = _clean_process_output(exc.stdout)
+            stderr = _clean_process_output(exc.stderr)
+            last_stage = _last_pdf_stage(stdout, stderr)
+            log.error(
+                "[pdf] html_to_pdf.py failed with exit code %s at stage: %s\nstdout:\n%s\nstderr:\n%s",
+                exc.returncode,
+                last_stage,
+                stdout or "(empty)",
+                stderr or "(empty)",
+            )
+            details = [
+                f"html_to_pdf.py exited with status {exc.returncode}",
+                f"last stage: {last_stage}",
+                f"stdout:\n{stdout or '(empty)'}",
+                f"stderr:\n{stderr or '(empty)'}",
+            ]
+            raise RuntimeError("\n\n".join(details)) from exc
+        except subprocess.TimeoutExpired as exc:
+            stdout = _clean_process_output(exc.stdout)
+            stderr = _clean_process_output(exc.stderr)
+            last_stage = _last_pdf_stage(stdout, stderr)
+            log.error(
+                "[pdf] html_to_pdf.py parent timeout after %ss at stage: %s\nstdout:\n%s\nstderr:\n%s",
+                exc.timeout,
+                last_stage,
+                stdout or "(empty)",
+                stderr or "(empty)",
+            )
+            details = [
+                f"html_to_pdf.py parent subprocess timed out after {exc.timeout}s",
+                f"last stage: {last_stage}",
+                f"stdout:\n{stdout or '(empty)'}",
+                f"stderr:\n{stderr or '(empty)'}",
+            ]
+            raise RuntimeError("\n\n".join(details)) from exc
         pdf_bytes = tmp_pdf.read_bytes()
         log.info("[pdf] generated %s bytes in %.2fs", len(pdf_bytes), time.monotonic() - t_start)
         return pdf_bytes
