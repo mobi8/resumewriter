@@ -1,4 +1,5 @@
 venv/
+venv
 venv_broken_*/
 venv_slow_*/
 __pycache__/
