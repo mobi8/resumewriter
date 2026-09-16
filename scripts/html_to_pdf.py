@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import signal
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +9,11 @@ from pathlib import Path
 SCRIPT_TIMEOUT_SECONDS = 45
 GOTO_TIMEOUT_MS = 15_000
 WORKER_FLAG = "--worker"
+DEFAULT_NODE_PATHS = (
+    Path.home() / ".nvm/versions/node/v23.5.0/bin/node",
+    Path("/opt/homebrew/bin/node"),
+    Path("/usr/local/bin/node"),
+)
 
 
 def log(message: str) -> None:
@@ -18,7 +24,22 @@ def worker_log(message: str) -> None:
     print(f"[html_to_pdf] {message}", file=sys.stderr, flush=True)
 
 
+def ensure_playwright_node() -> None:
+    if os.environ.get("PLAYWRIGHT_NODEJS_PATH"):
+        return
+
+    for node_path in DEFAULT_NODE_PATHS:
+        if node_path.exists():
+            os.environ["PLAYWRIGHT_NODEJS_PATH"] = str(node_path)
+            return
+
+    node_path = shutil.which("node")
+    if node_path:
+        os.environ["PLAYWRIGHT_NODEJS_PATH"] = node_path
+
+
 def run_worker(input_html: Path, output_pdf: Path) -> int:
+    ensure_playwright_node()
     worker_log("worker started")
     from playwright.sync_api import sync_playwright
 

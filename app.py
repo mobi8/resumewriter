@@ -35,6 +35,11 @@ LOGS_DIR = BASE / "logs"
 CAREER_OPS_HTML_DIR = Path(
     os.getenv("CAREER_OPS_HTML_DIR", "/Users/lewis/Desktop/career/career-ops/output/html")
 ).expanduser()
+DEFAULT_NODE_PATHS = (
+    Path.home() / ".nvm/versions/node/v23.5.0/bin/node",
+    Path("/opt/homebrew/bin/node"),
+    Path("/usr/local/bin/node"),
+)
 SAMPLES_DIR.mkdir(exist_ok=True)
 OUTPUTS_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
@@ -66,6 +71,18 @@ def _last_pdf_stage(stdout: str, stderr: str) -> str:
     return "unknown"
 
 
+def _pdf_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    if env.get("PLAYWRIGHT_NODEJS_PATH"):
+        return env
+
+    for node_path in DEFAULT_NODE_PATHS:
+        if node_path.exists():
+            env["PLAYWRIGHT_NODEJS_PATH"] = str(node_path)
+            break
+    return env
+
+
 def _generate_pdf_bytes(html: str, safe_stem: str) -> bytes:
     tmp_html = Path(tempfile.gettempdir()) / f"resume_pdf_{safe_stem}_{int(time.time())}.html"
     tmp_pdf = Path(tempfile.gettempdir()) / f"resume_pdf_{safe_stem}_{int(time.time())}.pdf"
@@ -83,6 +100,7 @@ def _generate_pdf_bytes(html: str, safe_stem: str) -> bytes:
                 timeout=60,
                 capture_output=True,
                 text=True,
+                env=_pdf_subprocess_env(),
             )
         except subprocess.CalledProcessError as exc:
             stdout = _clean_process_output(exc.stdout)
